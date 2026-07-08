@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Portal Submission Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0a0e0c;
+    --panel: #10160f;
+    --panel-alt: #161d19;
+    --border: #223026;
+    --text: #d7f5e6;
+    --text-muted: #6b8579;
+    --accent-green: #00e08a;
+    --accent-amber: #ffb703;
+    --accent-red: #ff5d5d;
+    --accent-cyan: #3ec6ff;
+    --font-display: 'JetBrains Mono', monospace;
+    --font-body: 'Inter', -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-body);
+    min-height:100vh;
+  }
+  ::selection{background:var(--accent-green); color:#04140d;}
+
+  .app{max-width:1100px; margin:0 auto; padding:0 20px 60px;}
+
+  /* ---- Header / signature scan bar ---- */
+  header{
+    position:relative;
+    padding:36px 0 22px;
+    overflow:hidden;
+  }
+  header .eyebrow{
+    font-family:var(--font-display);
+    font-size:11px;
+    letter-spacing:.28em;
+    color:var(--accent-cyan);
+    text-transform:uppercase;
+  }
+  header h1{
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:clamp(24px, 4vw, 34px);
+    margin:6px 0 4px;
+    letter-spacing:.01em;
+  }
+  header p{
+    color:var(--text-muted);
+    font-size:14px;
+    margin:0;
+    max-width:560px;
+  }
+  .scanline{
+    position:absolute;
+    left:-40%;
+    top:0;
+    width:40%;
+    height:100%;
+    background:linear-gradient(90deg, transparent, rgba(0,224,138,.08), transparent);
+    animation:sweep 5s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes sweep{
+    0%{left:-40%;}
+    50%{left:100%;}
+    100%{left:100%;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .scanline{animation:none; display:none;}
+  }
+
+  /* ---- Stats ---- */
+  .stats{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:12px;
+    margin-bottom:22px;
+  }
+  .stat{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:14px 16px;
+  }
+  .stat .num{
+    font-family:var(--font-display);
+    font-size:26px;
+    font-weight:700;
+    line-height:1;
+  }
+  .stat .label{
+    margin-top:6px;
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--text-muted);
+  }
+  .stat.pending .num{color:var(--accent-amber);}
+  .stat.accepted .num{color:var(--accent-green);}
+  .stat.other .num{color:var(--accent-red);}
+  @media (max-width:640px){ .stats{grid-template-columns:repeat(2,1fr);} }
+
+  /* ---- Controls ---- */
+  .controls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+    margin-bottom:16px;
+  }
+  input[type=text], select, textarea, input[type=date]{
+    background:var(--panel-alt);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:5px;
+    padding:9px 11px;
+    font-family:var(--font-body);
+    font-size:13.5px;
+  }
+  input[type=text]:focus, select:focus, textarea:focus, input[type=date]:focus, button:focus-visible{
+    outline:2px solid var(--accent-cyan);
+    outline-offset:1px;
+  }
+  #search{flex:1; min-width:160px;}
+  .btn{
+    font-family:var(--font-display);
+    font-size:12.5px;
+    letter-spacing:.04em;
+    border-radius:5px;
+    padding:9px 14px;
+    border:1px solid var(--border);
+    background:var(--panel-alt);
+    color:var(--text);
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .btn:hover{border-color:var(--accent-cyan);}
+  .btn.primary{background:var(--accent-green); color:#04140d; border-color:var(--accent-green); font-weight:700;}
+  .btn.primary:hover{filter:brightness(1.08);}
+  .btn.ghost{background:transparent;}
+  .btn.danger{color:var(--accent-red); border-color:var(--accent-red); background:transparent;}
+
+  /* ---- Table ---- */
+  .table-wrap{
+    border:1px solid var(--border);
+    border-radius:6px;
+    overflow:hidden;
+    background:var(--panel);
+  }
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  thead th{
+    text-align:left;
+    font-family:var(--font-display);
+    font-size:10.5px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--text-muted);
+    padding:11px 14px;
+    border-bottom:1px solid var(--border);
+    background:var(--panel-alt);
+    cursor:pointer;
+    user-select:none;
+  }
+  thead th:hover{color:var(--accent-cyan);}
+  tbody td{
+    padding:11px 14px;
+    border-bottom:1px solid var(--border);
+    vertical-align:top;
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:rgba(255,255,255,.02);}
+  .portal-name{font-weight:600; cursor:pointer;}
+  .portal-name:hover{color:var(--accent-cyan);}
+  .portal-name .has-detail{
+    display:inline-block; margin-left:6px; font-size:11px; color:var(--accent-cyan);
+    vertical-align:middle;
+  }
+  .notes{color:var(--text-muted); font-size:12.5px; max-width:220px;}
+  .badge{
+    display:inline-block;
+    font-family:var(--font-display);
+    font-size:10.5px;
+    letter-spacing:.06em;
+    padding:3px 8px;
+    border-radius:3px;
+    border:1px solid currentColor;
+  }
+  .badge.Pending{color:var(--accent-amber);}
+  .badge.Accepted{color:var(--accent-green);}
+  .badge.Rejected{color:var(--accent-red);}
+  .badge.Duplicate{color:var(--accent-red);}
+  .badge.Appeal{color:var(--accent-cyan);}
+  .row-actions{display:flex; gap:6px;}
+  .row-actions button{
+    background:none; border:none; color:var(--text-muted); cursor:pointer;
+    font-size:12px; font-family:var(--font-body); padding:2px 4px;
+  }
+  .row-actions button:hover{color:var(--accent-cyan);}
+
+  .empty{
+    padding:50px 20px;
+    text-align:center;
+    color:var(--text-muted);
+    font-size:14px;
+  }
+  .empty b{color:var(--text);}
+
+  /* ---- Modal ---- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(4,8,6,.7);
+    display:none; align-items:flex-start; justify-content:center;
+    padding:40px 16px; overflow:auto; z-index:10;
+  }
+  .overlay.open{display:flex;}
+  .modal{
+    background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    width:100%; max-width:480px; padding:22px;
+  }
+  .modal h2{
+    font-family:var(--font-display); font-size:16px; margin:0 0 4px;
+  }
+  .modal .sub{color:var(--text-muted); font-size:12.5px; margin:0 0 18px;}
+  .field{margin-bottom:14px; display:flex; flex-direction:column; gap:6px;}
+  .field label{font-size:11.5px; letter-spacing:.05em; color:var(--text-muted); text-transform:uppercase;}
+  .field input, .field select, .field textarea{width:100%;}
+  .field textarea{resize:vertical; min-height:70px; font-family:var(--font-body);}
+  #parseInput{min-height:160px; font-family:var(--font-display); font-size:12px;}
+  .modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:18px;}
+  .hint{
+    font-size:12px; color:var(--text-muted); background:var(--panel-alt);
+    border:1px solid var(--border); border-radius:5px; padding:9px 11px; margin-bottom:14px;
+  }
+  .photo-drop{
+    border:1px dashed var(--border); border-radius:6px; padding:14px;
+    text-align:center; cursor:pointer; color:var(--text-muted); font-size:12.5px;
+  }
+  .photo-drop:hover{border-color:var(--accent-cyan); color:var(--accent-cyan);}
+  .photo-preview{
+    width:100%; max-height:220px; object-fit:contain; border-radius:6px;
+    border:1px solid var(--border); cursor:zoom-in; display:block; margin-bottom:8px;
+    background:var(--panel-alt);
+  }
+  .photo-remove{
+    font-size:11.5px; color:var(--accent-red); background:none; border:none; cursor:pointer;
+    text-decoration:underline; padding:0;
+  }
+  .gmail-photo-thumb{
+    width:100%; max-height:140px; object-fit:cover; border-radius:6px;
+    border:1px solid var(--border); cursor:zoom-in; background:var(--panel-alt);
+  }
+  .gmail-photo-label{
+    font-size:10.5px; color:var(--text-muted); text-align:center; margin-top:3px;
+  }
+  .lightbox{
+    position:fixed; inset:0; background:rgba(4,8,6,.92);
+    display:none; align-items:center; justify-content:center; padding:30px; z-index:30;
+    cursor:zoom-out;
+  }
+  .lightbox.open{display:flex;}
+  .lightbox img{max-width:100%; max-height:100%; border-radius:6px;}
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:var(--panel-alt); border:1px solid var(--accent-green); color:var(--accent-green);
+    font-family:var(--font-display); font-size:12.5px; padding:10px 16px; border-radius:6px;
+    opacity:0; pointer-events:none; transition:opacity .2s; z-index:20;
+  }
+  .toast.show{opacity:1;}
+  footer{margin-top:26px; text-align:center; color:var(--text-muted); font-size:11.5px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="scanline"></div>
+    <div class="eyebrow">// portal submission log</div>
+    <h1>PORTAL SUBMISSION TRACKER</h1>
+    <p>Track every Niantic Wayspot/portal nomination you've submitted, and where each one stands — pending, accepted, rejected, or under appeal. Import a Gmail export to bulk-load your history, or add and edit entries by hand.</p>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><div class="num" id="statTotal">0</div><div class="label">Total</div></div>
+    <div class="stat pending"><div class="num" id="statPending">0</div><div class="label">Pending</div></div>
+    <div class="stat accepted"><div class="num" id="statAccepted">0</div><div class="label">Accepted</div></div>
+    <div class="stat other"><div class="num" id="statOther">0</div><div class="label">Rejected / Dup.</div></div>
+  </div>
+
+  <div class="controls">
+    <input type="text" id="search" placeholder="Search by portal name or notes…">
+    <select id="filterStatus">
+      <option value="">All statuses</option>
+      <option>Pending</option>
+      <option>Accepted</option>
+      <option>Rejected</option>
+      <option>Duplicate</option>
+      <option>Appeal</option>
+    </select>
+    <button class="btn ghost" id="btnParse">Parse email</button>
+    <button class="btn ghost" id="btnImport">Import JSON</button>
+    <input type="file" id="importInput" accept=".json,application/json" style="display:none;">
+    <button class="btn ghost" id="btnExport">Export CSV</button>
+    <button class="btn primary" id="btnAdd">+ Add submission</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th data-sort="portal">Portal</th>
+          <th data-sort="submitted">Submitted</th>
+          <th data-sort="status">Status</th>
+          <th data-sort="updated">Last updated</th>
+          <th>Notes</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="empty" id="emptyState" style="display:none;">
+      <b>No submissions tracked yet.</b><br>Click <b>Import JSON</b> to load a <code>wayspot_submissions.json</code> export (see the companion Python script), add one manually, or paste a confirmation email and let it parse the details.
+    </div>
+  </div>
+
+  <footer>Data is stored privately in this artifact only — nothing is sent anywhere.</footer>
+</div>
+
+<!-- Add/Edit modal -->
+<div class="overlay" id="editOverlay">
+  <div class="modal">
+    <h2 id="editTitle">Add submission</h2>
+    <p class="sub">Fill in what you know — you can edit this later.</p>
+    <div class="field">
+      <label>Portal name</label>
+      <input type="text" id="fPortal" placeholder="e.g. Mural on 5th &amp; Main">
+    </div>
+    <div class="field">
+      <label>Submitted date</label>
+      <input type="date" id="fSubmitted">
+    </div>
+    <div class="field">
+      <label>Status</label>
+      <select id="fStatus">
+        <option>Pending</option>
+        <option>Accepted</option>
+        <option>Rejected</option>
+        <option>Duplicate</option>
+        <option>Appeal</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Notes</label>
+      <textarea id="fNotes" placeholder="Any context — appeal reference, duplicate portal name, etc."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="cancelEdit">Cancel</button>
+      <button class="btn primary" id="saveEdit">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Parse email modal -->
+<div class="overlay" id="parseOverlay">
+  <div class="modal">
+    <h2>Parse a Niantic email</h2>
+    <p class="sub">Paste the full text of a portal submission email below. It'll pull out what it can — check the result before saving.</p>
+    <div class="field">
+      <label>Email text</label>
+      <textarea id="parseInput" placeholder="Paste the email body here…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="cancelParse">Cancel</button>
+      <button class="btn primary" id="runParse">Parse</button>
+    </div>
+  </div>
+</div>
+
+<!-- Submission detail modal -->
+<div class="overlay" id="detailOverlay">
+  <div class="modal">
+    <h2 id="detailTitle">Portal</h2>
+    <p class="sub" id="detailSub">Submitted — Status</p>
+    <div class="field" id="gmailPhotosField" style="display:none;">
+      <label>From Gmail</label>
+      <div id="gmailPhotosRow" style="display:flex; gap:8px;"></div>
+    </div>
+    <div class="field">
+      <label>Additional photo (optional)</label>
+      <img id="detailPhotoPreview" class="photo-preview" style="display:none;">
+      <div class="photo-drop" id="photoDrop">Click to add a photo</div>
+      <input type="file" id="photoInput" accept="image/*" style="display:none;">
+      <button class="photo-remove" id="photoRemove" style="display:none; margin-top:6px;">Remove photo</button>
+    </div>
+    <div class="field">
+      <label>Submission text</label>
+      <textarea id="detailDescription" placeholder="The first block from the email — what you wrote about the nomination…" style="min-height:90px;"></textarea>
+    </div>
+    <div class="field">
+      <label>Supporting text</label>
+      <textarea id="detailSupportingText" placeholder="The second block from the email — supporting context or a link…" style="min-height:70px;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="cancelDetail">Close</button>
+      <button class="btn primary" id="saveDetail">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <img id="lightboxImg" src="" alt="Submission photo">
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'submissions';
+
+  let submissions = [];
+  let editingId = null;
+  let sortKey = 'updated';
+  let sortDir = -1;
+
+  const tbody = document.getElementById('tbody');
+  const emptyState = document.getElementById('emptyState');
+  const toastEl = document.getElementById('toast');
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    setTimeout(()=>toastEl.classList.remove('show'), 1800);
+  }
+
+  function uid(){ return 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function todayISO(){ return new Date().toISOString().slice(0,10); }
+
+  async function load(){
+    try{
+      const res = await window.storage.get(STORAGE_KEY, false);
+      const stored = res ? JSON.parse(res.value) : null;
+      submissions = (stored && stored.submissions) ? stored.submissions : [];
+    }catch(e){
+      submissions = [];
+    }
+    render();
+  }
+
+  // Accepts either the raw output of gmail_wayspot_export.py (snake_case
+  // fields straight from wayspot_submissions.json) or the app's own camelCase
+  // shape. Matches on portal name + submitted date, so re-importing after a
+  // fresh script run updates existing rows (status changes, newly-decided
+  // nominations) instead of duplicating them. Your own notes and any manually
+  // uploaded photo are left untouched.
+  function importSubmissions(items){
+    const now = todayISO();
+    let added = 0, updated = 0, skipped = 0;
+    items.forEach(item=>{
+      const portal = item.portal;
+      if(!portal){ skipped++; return; }
+      const submitted = item.submitted_date || item.submitted || '';
+      const status = item.status || 'Pending';
+      const submissionText = item.submission_text ?? item.submissionText ?? '';
+      const supportingText = item.supporting_text ?? item.supportingText ?? '';
+      const photoUrl = item.submission_photo_url ?? item.photoUrl ?? '';
+      const supportingPhotoUrl = item.supporting_photo_url ?? item.supportingPhotoUrl ?? '';
+
+      const existing = submissions.find(s =>
+        s.portal.toLowerCase() === portal.toLowerCase() && s.submitted === submitted
+      );
+      if(existing){
+        existing.status = status;
+        existing.submissionText = submissionText;
+        existing.supportingText = supportingText;
+        existing.photoUrl = photoUrl;
+        existing.supportingPhotoUrl = supportingPhotoUrl;
+        existing.updated = now;
+        updated++;
+      }else{
+        submissions.push({
+          id: uid(), portal, submitted, status, notes: '',
+          submissionText, supportingText, photoUrl, supportingPhotoUrl, updated: now
+        });
+        added++;
+      }
+    });
+    return { added, updated, skipped };
+  }
+
+  async function persist(){
+    try{
+      const payload = JSON.stringify({ submissions });
+      const result = await window.storage.set(STORAGE_KEY, payload, false);
+      if(!result){
+        console.error('Storage error: set returned no result');
+        toast('Could not save — storage error');
+      }
+    }catch(e){
+      console.error('Storage error', e);
+      toast('Could not save — storage error');
+    }
+  }
+
+  // ---- Add / Edit modal ----
+  const editOverlay = document.getElementById('editOverlay');
+  function openEdit(existing){
+    editingId = existing ? existing.id : null;
+    document.getElementById('editTitle').textContent = existing ? 'Edit submission' : 'Add submission';
+    document.getElementById('fPortal').value = existing ? existing.portal : '';
+    document.getElementById('fSubmitted').value = existing ? (existing.submitted||'') : todayISO();
+    document.getElementById('fStatus').value = existing ? existing.status : 'Pending';
+    document.getElementById('fNotes').value = existing ? (existing.notes||'') : '';
+    editOverlay.classList.add('open');
+    document.getElementById('fPortal').focus();
+  }
+  document.getElementById('btnAdd').onclick = ()=>openEdit(null);
+
+  // ---- Import from gmail_wayspot_export.py output ----
+  const importInput = document.getElementById('importInput');
+  document.getElementById('btnImport').onclick = ()=>importInput.click();
+  importInput.addEventListener('change', async ()=>{
+    const file = importInput.files[0];
+    importInput.value = '';
+    if(!file) return;
+    try{
+      const text = await file.text();
+      const items = JSON.parse(text);
+      if(!Array.isArray(items)){
+        toast("That file doesn't look like a submissions export (expected a JSON array)");
+        return;
+      }
+      const { added, updated, skipped } = importSubmissions(items);
+      await persist();
+      render();
+      let msg = `Imported: ${added} new, ${updated} updated`;
+      if(skipped) msg += `, ${skipped} skipped`;
+      toast(msg);
+    }catch(e){
+      console.error('Import failed', e);
+      toast('Could not read that file — is it valid JSON?');
+    }
+  });
+  document.getElementById('cancelEdit').onclick = ()=>editOverlay.classList.remove('open');
+  editOverlay.addEventListener('click', e=>{ if(e.target===editOverlay) editOverlay.classList.remove('open'); });
+
+  document.getElementById('saveEdit').onclick = async ()=>{
+    const portal = document.getElementById('fPortal').value.trim();
+    if(!portal){ toast('Portal name is required'); return; }
+    const entry = {
+      id: editingId || uid(),
+      portal,
+      submitted: document.getElementById('fSubmitted').value,
+      status: document.getElementById('fStatus').value,
+      notes: document.getElementById('fNotes').value.trim(),
+      updated: todayISO()
+    };
+    if(editingId){
+      submissions = submissions.map(s=>s.id===editingId ? entry : s);
+    }else{
+      submissions.push(entry);
+    }
+    await persist();
+    render();
+    editOverlay.classList.remove('open');
+    toast(editingId ? 'Submission updated' : 'Submission added');
+  };
+
+  tbody.addEventListener('click', e=>{
+    const target = e.target.closest('button, td[data-act]');
+    if(!target) return;
+    const id = target.dataset.id;
+    const s = submissions.find(x=>x.id===id);
+    if(!s) return;
+    if(target.dataset.act==='edit'){
+      openEdit(s);
+    }else if(target.dataset.act==='del'){
+      if(confirm(`Delete "${s.portal}"?`)){
+        if(s.hasPhoto){
+          window.storage.delete('photo:' + s.id, false).catch(()=>{});
+        }
+        submissions = submissions.filter(x=>x.id!==id);
+        persist().then(render);
+        toast('Deleted');
+      }
+    }else if(target.dataset.act==='detail'){
+      openDetail(s);
+    }
+  });
+
+  // ---- Submission detail modal (photo + description) ----
+  const detailOverlay = document.getElementById('detailOverlay');
+  const lightbox = document.getElementById('lightbox');
+  const lightboxImg = document.getElementById('lightboxImg');
+  const photoPreview = document.getElementById('detailPhotoPreview');
+  const photoDrop = document.getElementById('photoDrop');
+  const photoInput = document.getElementById('photoInput');
+  const photoRemoveBtn = document.getElementById('photoRemove');
+  let detailingId = null;
+  let pendingPhoto = null; // holds a data URL while editing, null = no change requested
+
+  function renderPhotoUI(){
+    if(pendingPhoto){
+      photoPreview.src = pendingPhoto;
+      photoPreview.style.display = 'block';
+      photoDrop.textContent = 'Click to replace photo';
+      photoRemoveBtn.style.display = 'inline-block';
+    }else{
+      photoPreview.style.display = 'none';
+      photoDrop.textContent = 'Click to add a photo';
+      photoRemoveBtn.style.display = 'none';
+    }
+  }
+
+  function openDetail(s){
+    detailingId = s.id;
+    document.getElementById('detailTitle').textContent = s.portal;
+    document.getElementById('detailSub').textContent = `${s.submitted || 'No date'} — ${s.status}`;
+    document.getElementById('detailDescription').value = s.submissionText || '';
+    document.getElementById('detailSupportingText').value = s.supportingText || '';
+
+    const gmailField = document.getElementById('gmailPhotosField');
+    const gmailRow = document.getElementById('gmailPhotosRow');
+    gmailRow.innerHTML = '';
+    const gmailPhotos = [
+      s.photoUrl ? [s.photoUrl, 'Submission'] : null,
+      s.supportingPhotoUrl ? [s.supportingPhotoUrl, 'Supporting'] : null
+    ].filter(Boolean);
+    if(gmailPhotos.length){
+      gmailField.style.display = 'flex';
+      gmailField.style.flexDirection = 'column';
+      gmailPhotos.forEach(([url, label])=>{
+        const wrap = document.createElement('div');
+        wrap.style.flex = '1';
+        const img = document.createElement('img');
+        img.src = url;
+        img.className = 'gmail-photo-thumb';
+        img.onclick = ()=>{ lightboxImg.src = url; lightbox.classList.add('open'); };
+        const cap = document.createElement('div');
+        cap.className = 'gmail-photo-label';
+        cap.textContent = label;
+        wrap.appendChild(img);
+        wrap.appendChild(cap);
+        gmailRow.appendChild(wrap);
+      });
+    }else{
+      gmailField.style.display = 'none';
+    }
+
+    pendingPhoto = null;
+    photoDrop.textContent = s.hasPhoto ? 'Loading photo…' : 'Click to add a photo';
+    photoPreview.style.display = 'none';
+    photoRemoveBtn.style.display = 'none';
+    detailOverlay.classList.add('open');
+    if(s.hasPhoto){
+      window.storage.get('photo:' + s.id, false)
+        .then(res=>{ pendingPhoto = res ? res.value : null; renderPhotoUI(); })
+        .catch(()=>{ pendingPhoto = null; renderPhotoUI(); toast('Could not load photo'); });
+    }
+  }
+  document.getElementById('cancelDetail').onclick = ()=>detailOverlay.classList.remove('open');
+  detailOverlay.addEventListener('click', e=>{ if(e.target===detailOverlay) detailOverlay.classList.remove('open'); });
+
+  photoDrop.onclick = ()=>photoInput.click();
+  photoInput.addEventListener('change', ()=>{
+    const file = photoInput.files[0];
+    if(!file) return;
+    if(file.size > 4.5*1024*1024){ toast('Photo too large — try one under ~4MB'); return; }
+    const reader = new FileReader();
+    reader.onload = ()=>{ pendingPhoto = reader.result; renderPhotoUI(); };
+    reader.readAsDataURL(file);
+  });
+  photoRemoveBtn.onclick = ()=>{ pendingPhoto = null; photoInput.value=''; renderPhotoUI(); };
+  photoPreview.onclick = ()=>{
+    if(!pendingPhoto) return;
+    lightboxImg.src = pendingPhoto;
+    lightbox.classList.add('open');
+  };
+  lightbox.addEventListener('click', ()=>lightbox.classList.remove('open'));
+
+  document.getElementById('saveDetail').onclick = async ()=>{
+    const s = submissions.find(x=>x.id===detailingId);
+    if(!s) return;
+    s.submissionText = document.getElementById('detailDescription').value.trim();
+    s.supportingText = document.getElementById('detailSupportingText').value.trim();
+    try{
+      if(pendingPhoto){
+        await window.storage.set('photo:' + s.id, pendingPhoto, false);
+        s.hasPhoto = true;
+      }else{
+        if(s.hasPhoto) await window.storage.delete('photo:' + s.id, false);
+        s.hasPhoto = false;
+      }
+    }catch(e){
+      toast('Could not save photo — storage error');
+      return;
+    }
+    s.updated = todayISO();
+    await persist();
+    render();
+    detailOverlay.classList.remove('open');
+    toast('Saved');
+  };
+
+  // ---- Parse email modal ----
+  const parseOverlay = document.getElementById('parseOverlay');
+  document.getElementById('btnParse').onclick = ()=>{
+    document.getElementById('parseInput').value = '';
+    parseOverlay.classList.add('open');
+    document.getElementById('parseInput').focus();
+  };
+  document.getElementById('cancelParse').onclick = ()=>parseOverlay.classList.remove('open');
+  parseOverlay.addEventListener('click', e=>{ if(e.target===parseOverlay) parseOverlay.classList.remove('open'); });
+
+  function parseEmail(text){
+    let status = 'Pending';
+    if(/reject|declin/i.test(text)) status = 'Rejected';
+    else if(/duplicate/i.test(text)) status = 'Duplicate';
+    else if(/appeal/i.test(text)) status = 'Appeal';
+    else if(/accept|approv|is now live|has been added/i.test(text)) status = 'Accepted';
+
+    let portal = '';
+    const patterns = [
+      /portal[:\s]+["“]?([^"\n”]{3,80})["”]?/i,
+      /candidate[:\s]+["“]?([^"\n”]{3,80})["”]?/i,
+      /submission for[:\s]+["“]?([^"\n”]{3,80})["”]?/i,
+      /["“]([^"\n”]{3,80})["”]/
+    ];
+    for(const p of patterns){
+      const m = text.match(p);
+      if(m){ portal = m[1].trim(); break; }
+    }
+
+    let submitted = '';
+    const dateMatch = text.match(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b/i)
+      || text.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/);
+    if(dateMatch){
+      const d = new Date(dateMatch[0]);
+      if(!isNaN(d)) submitted = d.toISOString().slice(0,10);
+    }
+
+    return { portal, status, submitted };
+  }
+
+  document.getElementById('runParse').onclick = ()=>{
+    const text = document.getElementById('parseInput').value;
+    if(!text.trim()){ toast('Paste some email text first'); return; }
+    const result = parseEmail(text);
+    parseOverlay.classList.remove('open');
+    openEdit(null);
+    document.getElementById('fPortal').value = result.portal;
+    document.getElementById('fStatus').value = result.status;
+    if(result.submitted) document.getElementById('fSubmitted').value = result.submitted;
+    toast(result.portal ? 'Parsed — please double-check before saving' : 'Could not find a portal name — fill it in manually');
+  };
+
+  // ---- Search / filter / sort ----
+  document.getElementById('search').addEventListener('input', render);
+  document.getElementById('filterStatus').addEventListener('change', render);
+  document.querySelectorAll('th[data-sort]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const key = th.dataset.sort;
+      if(sortKey===key) sortDir *= -1; else { sortKey = key; sortDir = 1; }
+      render();
+    });
+  });
+
+  // ---- CSV export ----
+  document.getElementById('btnExport').onclick = ()=>{
+    try{
+      if(submissions.length===0){ toast('Nothing to export yet'); return; }
+      const header = ['Portal','Submitted','Status','Last Updated','Notes','Submission Text','Supporting Text','Submission Photo URL','Supporting Photo URL'];
+      const rows = submissions.map(s=>[
+        s.portal, s.submitted, s.status, s.updated, s.notes||'',
+        s.submissionText||'', s.supportingText||'', s.photoUrl||'', s.supportingPhotoUrl||''
+      ]);
+      const escapeCell = cell=>{
+        const v = String(cell ?? '');
+        return /[",\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
+      };
+      const csv = [header, ...rows].map(r => r.map(escapeCell).join(',')).join('\r\n');
+      // UTF-8 BOM so Excel renders accented characters (ä, ö, ü, é, š...) correctly
+      const blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'portal-submissions.csv';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url), 1000);
+      toast('CSV exported');
+    }catch(err){
+      console.error('CSV export failed', err);
+      toast('Export failed — see console for details');
+    }
+  };
+
+  load();
+})();
+</script>
+</body>
+</html>

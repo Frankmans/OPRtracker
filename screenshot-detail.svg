@@ -1,0 +1,60 @@
+<svg viewBox="0 0 520 620" xmlns="http://www.w3.org/2000/svg" font-family="JetBrains Mono, Menlo, monospace">
+  <defs>
+    <style>
+      .bg { fill: #04070a99; }
+      .panel { fill: #10160f; stroke: #223026; stroke-width: 1; }
+      .field { fill: #161d19; stroke: #223026; stroke-width: 1; }
+      .text { fill: #d7f5e6; font-family: Inter, sans-serif; }
+      .muted { fill: #6b8579; font-family: Inter, sans-serif; }
+      .mono { fill: #d7f5e6; font-family: 'JetBrains Mono', monospace; }
+      .label { fill: #6b8579; font-family: Inter, sans-serif; letter-spacing: 1px; }
+      .green { fill: #00e08a; }
+      .cyan { fill: #3ec6ff; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="520" height="620"/>
+
+  <!-- Modal card -->
+  <rect x="30" y="30" width="460" height="560" rx="8" class="panel"/>
+
+  <text x="54" y="70" class="mono" font-size="18" font-weight="700">Example Mural</text>
+  <text x="54" y="90" class="muted" font-size="12">2026-04-02 — Pending</text>
+
+  <!-- From Gmail photos -->
+  <text x="54" y="122" class="label" font-size="10">FROM GMAIL</text>
+  <rect x="54" y="132" width="192" height="110" rx="6" fill="#161d19" stroke="#223026"/>
+  <text x="150" y="192" text-anchor="middle" class="muted" font-size="11">Submission Photo</text>
+  <text x="150" y="258" text-anchor="middle" class="muted" font-size="10">Submission</text>
+
+  <rect x="262" y="132" width="192" height="110" rx="6" fill="#161d19" stroke="#223026"/>
+  <text x="358" y="192" text-anchor="middle" class="muted" font-size="11">Supporting Photo</text>
+  <text x="358" y="258" text-anchor="middle" class="muted" font-size="10">Supporting</text>
+
+  <!-- Additional photo -->
+  <text x="54" y="292" class="label" font-size="10">ADDITIONAL PHOTO (OPTIONAL)</text>
+  <rect x="54" y="302" width="400" height="44" rx="6" class="field" stroke-dasharray="4 3"/>
+  <text x="254" y="329" text-anchor="middle" class="muted" font-size="12">Click to add a photo</text>
+
+  <!-- Submission text -->
+  <text x="54" y="374" class="label" font-size="10">SUBMISSION TEXT</text>
+  <rect x="54" y="384" width="400" height="70" rx="6" class="field"/>
+  <text x="66" y="406" class="text" font-size="12">A short public-art piece near the</text>
+  <text x="66" y="424" class="text" font-size="12">footpath, added as part of a local</text>
+  <text x="66" y="442" class="text" font-size="12">community project.</text>
+
+  <!-- Supporting text -->
+  <text x="54" y="474" class="label" font-size="10">SUPPORTING TEXT</text>
+  <rect x="54" y="484" width="400" height="52" rx="6" class="field"/>
+  <text x="66" y="508" class="text" font-size="12">Encourages people to stop and</text>
+  <text x="66" y="524" class="text" font-size="12">explore the neighborhood.</text>
+
+  <!-- Buttons -->
+  <rect x="316" y="552" width="70" height="30" rx="5" fill="none" stroke="#223026"/>
+  <text x="330" y="571" class="muted" font-size="11">Close</text>
+
+  <rect x="394" y="552" width="60" height="30" rx="5" fill="#00e08a"/>
+  <text x="406" y="571" font-size="11" font-weight="700" fill="#04140d">Save</text>
+
+  <text x="54" y="600" class="muted" font-size="10">Placeholder content shown for illustration only.</text>
+</svg>
