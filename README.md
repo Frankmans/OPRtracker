@@ -66,8 +66,11 @@ python gmail_wayspot_export.py
   - `"Niantic Spatial Wayspot nomination received for"` — new Wayspot nominations, plus their decisions
   - `"Thanks! Niantic Spatial Wayspot Photo received for"` — photos added to *existing* Wayspots, plus their decisions
   - `"Thanks! Niantic Spatial Wayspot edit suggestion received for"` — title/description/location edits suggested for an existing Wayspot, plus their decisions
+  - `"Thanks! Niantic Spatial Wayspot appeal received"` / `"...title edit appeal received for"` — appeals of a rejected nomination, photo, or edit
 - Note: Niantic's photo-submission confirmation emails don't include any text or the photo itself (unlike nominations, which include both) — so those entries will only have a portal name, date, and eventual status.
 - Edit suggestions include the existing value and your suggested replacement, tagged with which field was edited (Title / Description / Location / etc).
+- **Appeals aren't a new row** — an appeal email references the original submission by name and date, so the script finds that entry and flips its status to `Appeal` instead of duplicating it. If it can't find a confident match, it adds the appeal as its own row instead of silently dropping it, with a note flagging it for manual review.
+- ⚠️ **Known limitation:** the *decided*-appeal email subject (`"Your Niantic Spatial Wayspot appeal has been decided"`) is a best guess — no real example was available while building this. If your appeal statuses don't update correctly after a decision comes in, open one of those emails, compare it against `parse_appeal_decision()` in the script, and adjust the parsing to match the real wording.
 - It prints progress as it goes, then writes **`wayspot_submissions.json`** in the same folder.
 
 Re-run it anytime to pick up new submissions or decisions — the tracker's import step below is smart about merging updates.

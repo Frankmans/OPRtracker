@@ -35,9 +35,30 @@ however, reliably states the edited field and the original submission date
 ("...your Wayspot title suggestion for X on Jan 7, 2026..."), so decisions
 are matched using the field + date rather than the subject line.
 
+APPEALS -- if a nomination/photo/edit was rejected, you can appeal it:
+    "Thanks! Niantic Spatial Wayspot appeal received for ..."           (nomination/photo)
+    "Thanks! Niantic Spatial Wayspot title edit appeal received for ..." (edit suggestions)
+  decided by (subject guessed -- see warning below):
+    "Your Niantic Spatial Wayspot appeal has been decided"
+
+Appeals aren't a new row -- they're a STATUS CHANGE on the original entry.
+The appeal email references the original submission by name and date
+("...originally submitted on Aug 20, 2025..."), so this script finds that
+matching entry and flips its status to "Appeal" rather than creating a
+duplicate. If a decided-appeal email is later found for it, that status
+updates again to Accepted/Rejected.
+
+*** WARNING: the "decided" appeal email format above was never seen in a  ***
+*** real inbox while writing this -- there was no example available. The ***
+*** parsing logic is a best-effort guess (looks for "congratulations" /  ***
+*** "unfortunately" and tries to find a portal name nearby). If appeal   ***
+*** statuses come out wrong, find a real one of these emails, check its  ***
+*** actual wording, and update parse_appeal_decision() to match.        ***
+
 Output: wayspot_submissions.json (a list of dicts) in the same folder, with
 each entry tagged "submission_type": "Nomination", "Photo", or "Edit" (edits
-also carry an "edit_field": "Title" / "Description" / "Location" / etc).
+also carry an "edit_field": "Title" / "Description" / "Location" / etc), and
+"status" of "Pending", "Accepted", "Rejected", or "Appeal".
 
 ---------------------------------------------------------------------------
 ONE-TIME SETUP
@@ -85,6 +106,10 @@ PHOTO_RECEIVED_QUERY = 'subject:"Thanks! Niantic Spatial Wayspot Photo received 
 PHOTO_DECIDED_QUERY = 'subject:"Niantic Spatial Wayspot media submission decided for"'
 EDIT_RECEIVED_QUERY = 'subject:"Thanks! Niantic Spatial Wayspot edit suggestion received for"'
 EDIT_DECIDED_QUERY = 'subject:"Niantic Spatial Wayspot edit suggestion decided for"'
+APPEAL_RECEIVED_QUERY = 'subject:"Thanks! Niantic Spatial Wayspot appeal received"'
+APPEAL_EDIT_RECEIVED_QUERY = 'subject:"Thanks! Niantic Spatial Wayspot title edit appeal received for"'
+# Guessed subject -- see the WARNING in the module docstring above.
+APPEAL_DECIDED_QUERY = 'subject:"Your Niantic Spatial Wayspot appeal has been decided"'
 
 
 # ---------------------------------------------------------------------------
@@ -428,8 +453,233 @@ def collect_edits(service):
 
 
 # ---------------------------------------------------------------------------
-# Shared collection logic
+# Parsing -- Appeals (status change on an existing entry, not a new row)
 # ---------------------------------------------------------------------------
+def parse_appeal_received(subject, plaintext_body, html_body):
+    """Figures out what an appeal was filed against by matching the body's
+    own wording, since that's more reliable than the subject line:
+        "...for your nomination: X, originally submitted on <date>..."
+        "...for your Wayspot edit, originally submitted on <date>..."
+    A photo-submission appeal pattern is guessed by analogy with the
+    nomination one, since no real example was available -- flag this if it
+    doesn't match reality.
+    Returns a dict with target_type ('Nomination'/'Photo'/'Edit'/'Unknown'),
+    portal, original_submitted_date, and (for Edit) edit_field."""
+    m_nom = re.search(
+        r"for your nomination:\s*(.+?),\s*originally submitted on ([A-Za-z]+ \d{1,2},? \d{4})",
+        plaintext_body,
+    )
+    m_photo = re.search(
+        r"for your (?:Wayspot )?[Pp]hoto(?: submission)?:\s*(.+?),\s*originally submitted on ([A-Za-z]+ \d{1,2},? \d{4})",
+        plaintext_body,
+    )
+    m_edit = re.search(
+        r"for your Wayspot edit,\s*originally submitted on ([A-Za-z]+ \d{1,2},? \d{4})",
+        plaintext_body,
+    )
+
+    edit_field = None
+    submission_photo_url = None
+    supporting_photo_url = None
+
+    if m_nom:
+        target_type = "Nomination"
+        portal = m_nom.group(1).strip()
+        orig_date_raw = m_nom.group(2)
+    elif m_photo:
+        target_type = "Photo"
+        portal = m_photo.group(1).strip()
+        orig_date_raw = m_photo.group(2)
+    elif m_edit:
+        target_type = "Edit"
+        orig_date_raw = m_edit.group(1)
+        wayspot_m = re.search(r"Wayspot:[ \t]*(.+)", plaintext_body)
+        portal = wayspot_m.group(1).strip() if wayspot_m else parse_edit_portal_name_fallback(subject)
+    else:
+        target_type = "Unknown"
+        portal = parse_edit_portal_name_fallback(subject)
+        orig_date_raw = None
+
+    try:
+        original_submitted_date = (
+            datetime.strptime(orig_date_raw.replace(",", ""), "%b %d %Y").strftime("%Y-%m-%d")
+            if orig_date_raw else None
+        )
+    except ValueError:
+        original_submitted_date = None
+
+    if target_type == "Edit":
+        field_m = re.search(r"Existing (\w[\w\s]*?):[ \t]*(.*)", plaintext_body)
+        suggested_m = re.search(r"Suggested edit:[ \t]*(.*)", plaintext_body)
+        edit_field = field_m.group(1).strip().title() if field_m else "Unknown"
+        existing_value = field_m.group(2).strip() if field_m else ""
+        suggested_value = suggested_m.group(1).strip() if suggested_m else ""
+        submission_text = f"Existing {edit_field.lower()}: {existing_value}" if existing_value else f"(no existing {edit_field.lower()})"
+        supporting_text = f"Suggested edit: {suggested_value}"
+    else:
+        soup = BeautifulSoup(html_body, "html.parser")
+
+        def photo_url(alt_text):
+            img = soup.find("img", alt=alt_text)
+            return img["src"] if img and img.has_attr("src") else None
+
+        submission_photo_url = photo_url("Submission Photo")
+        supporting_photo_url = photo_url("Supporting Photo")
+
+        text_blocks = centered_text_blocks(soup)
+        submission_text, supporting_text = "", ""
+        try:
+            idx = text_blocks.index(portal)
+            remaining = text_blocks[idx + 1:]
+            cleaned = []
+            for t in remaining:
+                if t.startswith("Your appeal will be reviewed") or "Recon Criteria" in t:
+                    break
+                cleaned.append(t)
+            if len(cleaned) > 0:
+                submission_text = cleaned[0]
+            if len(cleaned) > 1:
+                supporting_text = cleaned[1]
+        except ValueError:
+            pass
+
+    return {
+        "target_type": target_type,
+        "portal": portal,
+        "original_submitted_date": original_submitted_date,
+        "edit_field": edit_field,
+        "submission_text": submission_text,
+        "supporting_text": supporting_text,
+        "submission_photo_url": submission_photo_url,
+        "supporting_photo_url": supporting_photo_url,
+    }
+
+
+def parse_appeal_decision(plaintext_body, html_body):
+    """*** BEST-EFFORT / UNCONFIRMED -- see WARNING in module docstring. ***
+    No real example of this email existed when this was written. Looks for
+    congratulations/accept vs unfortunately/not-accept keywords, and guesses
+    the portal name from a short centered text block in the body."""
+    text = plaintext_body + " " + html_body
+    lower = text.lower()
+
+    status = None
+    if "congratulations" in lower and "accept" in lower:
+        status = "Accepted"
+    elif "not accept" in lower or "unfortunately" in lower:
+        status = "Rejected"
+
+    soup = BeautifulSoup(html_body, "html.parser")
+    candidates = [
+        d for d in centered_text_blocks(soup)
+        if 3 < len(d) < 80 and "Recon" not in d and "Dear" not in d and "appeal" not in d.lower()
+    ]
+    portal_guess = candidates[0] if candidates else None
+    return status, portal_guess
+
+
+def dates_approximately_match(date_a, date_b, tolerance_days=1):
+    """Appeal emails restate the original submission date in prose, which can
+    land a day off from the original email's header-derived date depending
+    on timezone rendering. Allow a small tolerance rather than requiring an
+    exact string match, which would silently fail to link the two."""
+    if not date_a or not date_b:
+        return False
+    if date_a == date_b:
+        return True
+    try:
+        d1 = datetime.strptime(date_a, "%Y-%m-%d")
+        d2 = datetime.strptime(date_b, "%Y-%m-%d")
+        return abs((d1 - d2).days) <= tolerance_days
+    except ValueError:
+        return False
+
+
+def apply_appeals(entries, service):
+    """Mutates `entries` in place. An appeal doesn't create a new row -- it
+    changes the status of the original nomination/photo/edit entry it
+    references. Unmatched appeals (shouldn't normally happen, but Niantic's
+    wording could vary) are added as new fallback rows instead of silently
+    dropped, clearly flagged in their notes."""
+    print("Searching for appeal received emails (nomination/photo)...")
+    ids_main = list_all_message_ids(service, APPEAL_RECEIVED_QUERY)
+    print(f"  found {len(ids_main)} messages")
+    print("Searching for appeal received emails (title edit)...")
+    ids_edit = list_all_message_ids(service, APPEAL_EDIT_RECEIVED_QUERY)
+    print(f"  found {len(ids_edit)} messages")
+
+    all_ids = ids_main + ids_edit
+    matched_count = 0
+    unmatched = []
+
+    for i, msg_id in enumerate(all_ids, 1):
+        msg = get_message(service, msg_id)
+        payload = msg["payload"]
+        subject = get_header(payload, "Subject")
+        plaintext, html = extract_bodies(payload)
+        parsed = parse_appeal_received(subject, plaintext, html)
+
+        match = None
+        for e in entries:
+            if (
+                e["portal"].lower() == parsed["portal"].lower()
+                and dates_approximately_match(e.get("submitted_date"), parsed["original_submitted_date"])
+                and (parsed["target_type"] == "Unknown" or e.get("submission_type") == parsed["target_type"])
+            ):
+                match = e
+                break
+
+        if match:
+            match["status"] = "Appeal"
+            matched_count += 1
+            print(f"  [{i}/{len(all_ids)}] Matched appeal for {parsed['portal']} ({parsed['target_type']}) -> status set to Appeal")
+        else:
+            unmatched.append(parsed["portal"])
+            fallback_type = parsed["target_type"] if parsed["target_type"] != "Unknown" else "Nomination"
+            entries.append({
+                "portal": parsed["portal"],
+                "submitted_date": parsed["original_submitted_date"] or "",
+                "status": "Appeal",
+                "submission_type": fallback_type,
+                "edit_field": parsed["edit_field"],
+                "submission_text": parsed["submission_text"],
+                "supporting_text": parsed["supporting_text"],
+                "extra_text": [],
+                "submission_photo_url": parsed["submission_photo_url"],
+                "supporting_photo_url": parsed["supporting_photo_url"],
+                "notes": "Could not automatically match this appeal to an original submission -- added as a new entry for review.",
+            })
+            print(f"  [{i}/{len(all_ids)}] Could not match appeal for {parsed['portal']} -- added as a new entry instead")
+
+    print(f"\nMarked {matched_count} entries as Appealed.")
+    if unmatched:
+        print(f"Note: {len(unmatched)} appeal(s) couldn't be matched automatically and were added as new rows: {', '.join(unmatched)}")
+
+    print("\nSearching for decided-appeal emails...")
+    print("(format is unconfirmed -- see WARNING in the module docstring)")
+    decided_ids = list_all_message_ids(service, APPEAL_DECIDED_QUERY)
+    print(f"  found {len(decided_ids)} messages")
+
+    for i, msg_id in enumerate(decided_ids, 1):
+        msg = get_message(service, msg_id)
+        payload = msg["payload"]
+        plaintext, html = extract_bodies(payload)
+        status, portal_guess = parse_appeal_decision(plaintext, html)
+        if not status or not portal_guess:
+            print(f"  [{i}/{len(decided_ids)}] Could not parse this decided-appeal email -- skipped")
+            continue
+        matched = False
+        for e in entries:
+            if e["portal"].lower() == portal_guess.lower() and e["status"] == "Appeal":
+                e["status"] = status
+                matched = True
+                print(f"  [{i}/{len(decided_ids)}] {portal_guess} appeal -> {status}")
+                break
+        if not matched:
+            print(f"  [{i}/{len(decided_ids)}] Could not match decided appeal for '{portal_guess}' to a Pending appeal")
+
+
+
 def collect(service, received_query, decided_query, parse_received_fn, parse_decision_fn,
             submission_type, label):
     print(f"Searching for '{label}' received emails...")
@@ -498,14 +748,18 @@ def main():
     edits = collect_edits(service)
 
     results = nominations + photos + edits
+    print()
+    apply_appeals(results, service)
+
     results.sort(key=lambda r: r["submitted_date"], reverse=True)
 
     with open("wayspot_submissions.json", "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
+    appeal_count = sum(1 for r in results if r["status"] == "Appeal")
     print(f"\nWrote {len(results)} entries to wayspot_submissions.json "
           f"({len(nominations)} nominations, {len(photos)} photo submissions, "
-          f"{len(edits)} edit suggestions)")
+          f"{len(edits)} edit suggestions, {appeal_count} currently under appeal)")
 
 
 if __name__ == "__main__":
