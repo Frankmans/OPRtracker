@@ -167,10 +167,71 @@
     padding:11px 14px;
     border-bottom:1px solid var(--border);
     background:var(--panel-alt);
-    cursor:pointer;
     user-select:none;
+    white-space:nowrap;
   }
-  thead th:hover{color:var(--accent-cyan);}
+  thead th [data-sort], thead th[data-sort]{
+    cursor:pointer;
+  }
+  thead th [data-sort]:hover, thead th[data-sort]:hover{color:var(--accent-cyan);}
+  .th-filter-btn{
+    background:none;
+    border:none;
+    color:var(--text-muted);
+    cursor:pointer;
+    font-size:9px;
+    padding:2px 4px;
+    margin-left:2px;
+    border-radius:3px;
+    vertical-align:middle;
+  }
+  .th-filter-btn:hover{color:var(--accent-cyan);}
+  .th-filter-btn.active{color:var(--accent-green); background:rgba(0,224,138,.12);}
+  .filter-popover{
+    position:fixed;
+    display:none;
+    z-index:40;
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:12px;
+    min-width:180px;
+    max-width:260px;
+    box-shadow:0 8px 24px rgba(0,0,0,.4);
+  }
+  .filter-popover.open{display:block;}
+  .filter-popover-title{
+    font-family:var(--font-display);
+    font-size:10.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--text-muted);
+    margin-bottom:8px;
+  }
+  .filter-check{
+    display:flex;
+    align-items:center;
+    gap:7px;
+    font-size:13px;
+    color:var(--text);
+    padding:4px 2px;
+    cursor:pointer;
+    text-transform:none;
+    letter-spacing:0;
+    font-family:var(--font-body);
+  }
+  .filter-check input{accent-color:var(--accent-green);}
+  .filter-date-row{display:flex; flex-direction:column; gap:8px; margin-bottom:10px;}
+  .filter-date-row label{
+    display:flex; flex-direction:column; gap:4px;
+    font-size:11px; color:var(--text-muted); text-transform:none; letter-spacing:0;
+    font-family:var(--font-body);
+  }
+  .filter-date-row input{width:100%;}
+  .filter-presets{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;}
+  .filter-presets .btn{padding:5px 9px; font-size:10.5px;}
+  .filter-actions{display:flex; justify-content:space-between; gap:8px; margin-top:4px;}
+  .filter-actions .btn{padding:6px 12px; font-size:11px;}
   tbody td{
     padding:11px 14px;
     border-bottom:1px solid var(--border);
@@ -199,6 +260,19 @@
   .badge.Rejected{color:var(--accent-red);}
   .badge.Duplicate{color:var(--accent-red);}
   .badge.Appeal{color:var(--accent-cyan);}
+  .type-badge{
+    display:inline-block;
+    font-family:var(--font-display);
+    font-size:10px;
+    letter-spacing:.04em;
+    padding:2px 7px;
+    border-radius:3px;
+    background:var(--panel-alt);
+    color:var(--text-muted);
+    border:1px solid var(--border);
+  }
+  .type-badge.photo{color:var(--accent-cyan); border-color:var(--accent-cyan);}
+  .type-badge.edit{color:var(--accent-amber); border-color:var(--accent-amber);}
   .row-actions{display:flex; gap:6px;}
   .row-actions button{
     background:none; border:none; color:var(--text-muted); cursor:pointer;
@@ -295,14 +369,6 @@
 
   <div class="controls">
     <input type="text" id="search" placeholder="Search by portal name or notes…">
-    <select id="filterStatus">
-      <option value="">All statuses</option>
-      <option>Pending</option>
-      <option>Accepted</option>
-      <option>Rejected</option>
-      <option>Duplicate</option>
-      <option>Appeal</option>
-    </select>
     <button class="btn ghost" id="btnParse">Parse email</button>
     <button class="btn ghost" id="btnImport">Import JSON</button>
     <input type="file" id="importInput" accept=".json,application/json" style="display:none;">
@@ -315,9 +381,22 @@
       <thead>
         <tr>
           <th data-sort="portal">Portal</th>
-          <th data-sort="submitted">Submitted</th>
-          <th data-sort="status">Status</th>
-          <th data-sort="updated">Last updated</th>
+          <th>
+            <span data-sort="type">Type</span>
+            <button class="th-filter-btn" data-filter="type" aria-label="Filter by type">▾</button>
+          </th>
+          <th>
+            <span data-sort="submitted">Submitted</span>
+            <button class="th-filter-btn" data-filter="submitted" aria-label="Filter by submitted date">▾</button>
+          </th>
+          <th>
+            <span data-sort="status">Status</span>
+            <button class="th-filter-btn" data-filter="status" aria-label="Filter by status">▾</button>
+          </th>
+          <th>
+            <span data-sort="updated">Last updated</span>
+            <button class="th-filter-btn" data-filter="updated" aria-label="Filter by last updated date">▾</button>
+          </th>
           <th>Notes</th>
           <th></th>
         </tr>
@@ -340,6 +419,18 @@
     <div class="field">
       <label>Portal name</label>
       <input type="text" id="fPortal" placeholder="e.g. Mural on 5th &amp; Main">
+    </div>
+    <div class="field">
+      <label>Type</label>
+      <select id="fType">
+        <option>Nomination</option>
+        <option>Photo</option>
+        <option>Edit</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Edit field (only for Type: Edit)</label>
+      <input type="text" id="fEditField" placeholder="e.g. Title, Description, Location">
     </div>
     <div class="field">
       <label>Submitted date</label>
@@ -417,6 +508,8 @@
   <img id="lightboxImg" src="" alt="Submission photo">
 </div>
 
+<div class="filter-popover" id="filterPopover"></div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -427,6 +520,20 @@
   let editingId = null;
   let sortKey = 'updated';
   let sortDir = -1;
+  let filterTypes = new Set();      // empty set = show all types
+  let filterStatuses = new Set();   // empty set = show all statuses
+  let dateFilters = {
+    submitted: { from: '', to: '' },
+    updated: { from: '', to: '' }
+  };
+
+  function inDateRange(dateStr, range){
+    if(!range.from && !range.to) return true;
+    if(!dateStr) return false;
+    if(range.from && dateStr < range.from) return false;
+    if(range.to && dateStr > range.to) return false;
+    return true;
+  }
 
   const tbody = document.getElementById('tbody');
   const emptyState = document.getElementById('emptyState');
@@ -440,6 +547,65 @@
 
   function uid(){ return 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
   function todayISO(){ return new Date().toISOString().slice(0,10); }
+
+  function escapeHtml(str){
+    return String(str ?? '').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  function render(){
+    const q = document.getElementById('search').value.trim().toLowerCase();
+
+    let rows = submissions.filter(s=>{
+      const matchesQ = !q || s.portal.toLowerCase().includes(q) || (s.notes||'').toLowerCase().includes(q);
+      const type = s.type || 'Nomination';
+      const matchesType = filterTypes.size===0 || filterTypes.has(type);
+      const matchesStatus = filterStatuses.size===0 || filterStatuses.has(s.status);
+      const matchesSubmitted = inDateRange(s.submitted, dateFilters.submitted);
+      const matchesUpdated = inDateRange(s.updated, dateFilters.updated);
+      return matchesQ && matchesType && matchesStatus && matchesSubmitted && matchesUpdated;
+    });
+
+    rows.sort((a,b)=>{
+      let av, bv;
+      if(sortKey==='portal'){ av=a.portal.toLowerCase(); bv=b.portal.toLowerCase(); }
+      else if(sortKey==='type'){ av=a.type||'Nomination'; bv=b.type||'Nomination'; }
+      else if(sortKey==='submitted'){ av=a.submitted||''; bv=b.submitted||''; }
+      else if(sortKey==='status'){ av=a.status; bv=b.status; }
+      else { av=a.updated||''; bv=b.updated||''; }
+      if(av<bv) return -1*sortDir;
+      if(av>bv) return 1*sortDir;
+      return 0;
+    });
+
+    tbody.innerHTML = '';
+    emptyState.style.display = submissions.length===0 ? 'block' : 'none';
+
+    rows.forEach(s=>{
+      const tr = document.createElement('tr');
+      const hasDetail = !!(s.hasPhoto || s.photoUrl || (s.submissionText && s.submissionText.trim()));
+      const type = s.type || 'Nomination';
+      const typeClass = type === 'Photo' ? 'photo' : (type === 'Edit' ? 'edit' : 'nomination');
+      const typeLabel = type === 'Edit' && s.editField ? `Edit · ${s.editField}` : type;
+      tr.innerHTML = `
+        <td class="portal-name" data-act="detail" data-id="${s.id}">${escapeHtml(s.portal)}${hasDetail ? '<span class="has-detail" title="Has photo/description">●</span>' : ''}</td>
+        <td><span class="type-badge ${typeClass}">${escapeHtml(typeLabel)}</span></td>
+        <td>${s.submitted || '—'}</td>
+        <td><span class="badge ${s.status}">${s.status.toUpperCase()}</span></td>
+        <td>${s.updated || '—'}</td>
+        <td class="notes">${escapeHtml(s.notes||'')}</td>
+        <td><div class="row-actions">
+          <button data-act="edit" data-id="${s.id}">Edit</button>
+          <button data-act="del" data-id="${s.id}">Delete</button>
+        </div></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('statTotal').textContent = submissions.length;
+    document.getElementById('statPending').textContent = submissions.filter(s=>s.status==='Pending'||s.status==='Appeal').length;
+    document.getElementById('statAccepted').textContent = submissions.filter(s=>s.status==='Accepted').length;
+    document.getElementById('statOther').textContent = submissions.filter(s=>s.status==='Rejected'||s.status==='Duplicate').length;
+  }
 
   async function load(){
     try{
@@ -466,13 +632,18 @@
       if(!portal){ skipped++; return; }
       const submitted = item.submitted_date || item.submitted || '';
       const status = item.status || 'Pending';
+      const type = item.submission_type || item.type || 'Nomination';
+      const editField = item.edit_field || item.editField || '';
       const submissionText = item.submission_text ?? item.submissionText ?? '';
       const supportingText = item.supporting_text ?? item.supportingText ?? '';
       const photoUrl = item.submission_photo_url ?? item.photoUrl ?? '';
       const supportingPhotoUrl = item.supporting_photo_url ?? item.supportingPhotoUrl ?? '';
 
       const existing = submissions.find(s =>
-        s.portal.toLowerCase() === portal.toLowerCase() && s.submitted === submitted
+        s.portal.toLowerCase() === portal.toLowerCase() &&
+        s.submitted === submitted &&
+        (s.type || 'Nomination') === type &&
+        (s.editField || '') === editField
       );
       if(existing){
         existing.status = status;
@@ -484,7 +655,7 @@
         updated++;
       }else{
         submissions.push({
-          id: uid(), portal, submitted, status, notes: '',
+          id: uid(), portal, submitted, status, type, editField, notes: '',
           submissionText, supportingText, photoUrl, supportingPhotoUrl, updated: now
         });
         added++;
@@ -513,6 +684,8 @@
     editingId = existing ? existing.id : null;
     document.getElementById('editTitle').textContent = existing ? 'Edit submission' : 'Add submission';
     document.getElementById('fPortal').value = existing ? existing.portal : '';
+    document.getElementById('fType').value = existing ? (existing.type || 'Nomination') : 'Nomination';
+    document.getElementById('fEditField').value = existing ? (existing.editField || '') : '';
     document.getElementById('fSubmitted').value = existing ? (existing.submitted||'') : todayISO();
     document.getElementById('fStatus').value = existing ? existing.status : 'Pending';
     document.getElementById('fNotes').value = existing ? (existing.notes||'') : '';
@@ -552,18 +725,21 @@
   document.getElementById('saveEdit').onclick = async ()=>{
     const portal = document.getElementById('fPortal').value.trim();
     if(!portal){ toast('Portal name is required'); return; }
-    const entry = {
-      id: editingId || uid(),
+    const fields = {
       portal,
+      type: document.getElementById('fType').value,
+      editField: document.getElementById('fEditField').value.trim(),
       submitted: document.getElementById('fSubmitted').value,
       status: document.getElementById('fStatus').value,
       notes: document.getElementById('fNotes').value.trim(),
       updated: todayISO()
     };
     if(editingId){
-      submissions = submissions.map(s=>s.id===editingId ? entry : s);
+      // Merge rather than replace, so fields not on this form (Gmail-sourced
+      // text/photos, hasPhoto) survive a plain edit.
+      submissions = submissions.map(s => s.id===editingId ? { ...s, ...fields } : s);
     }else{
-      submissions.push(entry);
+      submissions.push({ id: uid(), ...fields });
     }
     await persist();
     render();
@@ -620,7 +796,8 @@
   function openDetail(s){
     detailingId = s.id;
     document.getElementById('detailTitle').textContent = s.portal;
-    document.getElementById('detailSub').textContent = `${s.submitted || 'No date'} — ${s.status}`;
+    const typeLabel = (s.type === 'Edit' && s.editField) ? `Edit · ${s.editField}` : (s.type || 'Nomination');
+    document.getElementById('detailSub').textContent = `${typeLabel} — ${s.submitted || 'No date'} — ${s.status}`;
     document.getElementById('detailDescription').value = s.submissionText || '';
     document.getElementById('detailSupportingText').value = s.supportingText || '';
 
@@ -761,22 +938,160 @@
 
   // ---- Search / filter / sort ----
   document.getElementById('search').addEventListener('input', render);
-  document.getElementById('filterStatus').addEventListener('change', render);
-  document.querySelectorAll('th[data-sort]').forEach(th=>{
-    th.addEventListener('click', ()=>{
-      const key = th.dataset.sort;
+  document.querySelectorAll('[data-sort]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const key = el.dataset.sort;
       if(sortKey===key) sortDir *= -1; else { sortKey = key; sortDir = 1; }
       render();
     });
   });
 
+  // ---- Header filter popovers (Type, Status, Submitted, Last updated) ----
+  const filterPopover = document.getElementById('filterPopover');
+
+  function closeFilterPopover(){
+    filterPopover.classList.remove('open');
+    filterPopover.dataset.column = '';
+  }
+
+  function updateFilterButtonStates(){
+    document.querySelectorAll('.th-filter-btn').forEach(btn=>{
+      const col = btn.dataset.filter;
+      let active = false;
+      if(col==='type') active = filterTypes.size > 0;
+      else if(col==='status') active = filterStatuses.size > 0;
+      else if(col==='submitted') active = !!(dateFilters.submitted.from || dateFilters.submitted.to);
+      else if(col==='updated') active = !!(dateFilters.updated.from || dateFilters.updated.to);
+      btn.classList.toggle('active', active);
+    });
+  }
+
+  function distinctColumnValues(column){
+    if(column==='type') return [...new Set(submissions.map(s=>s.type||'Nomination'))];
+    if(column==='status') return [...new Set(submissions.map(s=>s.status))];
+    return [];
+  }
+
+  function openChecklistPopover(column){
+    const values = distinctColumnValues(column);
+    const activeSet = column==='type' ? filterTypes : filterStatuses;
+    const label = column==='type' ? 'Type' : 'Status';
+
+    filterPopover.innerHTML = `
+      <div class="filter-popover-title">Filter by ${label}</div>
+      ${values.map(v => `
+        <label class="filter-check">
+          <input type="checkbox" value="${escapeHtml(v)}" ${activeSet.size===0 || activeSet.has(v) ? 'checked' : ''}>
+          ${escapeHtml(v)}
+        </label>
+      `).join('')}
+      <div class="filter-actions">
+        <button class="btn ghost" id="filterClearBtn">Clear</button>
+        <button class="btn primary" id="filterApplyBtn">Apply</button>
+      </div>
+    `;
+
+    document.getElementById('filterApplyBtn').onclick = ()=>{
+      const checked = [...filterPopover.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.value);
+      const newSet = checked.length === values.length ? new Set() : new Set(checked);
+      if(column==='type') filterTypes = newSet; else filterStatuses = newSet;
+      closeFilterPopover();
+      updateFilterButtonStates();
+      render();
+    };
+    document.getElementById('filterClearBtn').onclick = ()=>{
+      if(column==='type') filterTypes = new Set(); else filterStatuses = new Set();
+      closeFilterPopover();
+      updateFilterButtonStates();
+      render();
+    };
+  }
+
+  function openDateRangePopover(column){
+    const cur = dateFilters[column];
+    const label = column==='submitted' ? 'submitted date' : 'last updated date';
+
+    filterPopover.innerHTML = `
+      <div class="filter-popover-title">Filter by ${label}</div>
+      <div class="filter-date-row">
+        <label>From <input type="date" id="filterDateFrom" value="${cur.from}"></label>
+        <label>To <input type="date" id="filterDateTo" value="${cur.to}"></label>
+      </div>
+      <div class="filter-presets">
+        <button class="btn ghost preset" type="button" data-days="7">Last 7 days</button>
+        <button class="btn ghost preset" type="button" data-days="30">Last 30 days</button>
+        <button class="btn ghost preset" type="button" data-days="365">Last year</button>
+      </div>
+      <div class="filter-actions">
+        <button class="btn ghost" id="filterClearBtn">Clear</button>
+        <button class="btn primary" id="filterApplyBtn">Apply</button>
+      </div>
+    `;
+
+    filterPopover.querySelectorAll('.preset').forEach(btn=>{
+      btn.onclick = ()=>{
+        const days = parseInt(btn.dataset.days, 10);
+        const to = todayISO();
+        const fromDate = new Date();
+        fromDate.setDate(fromDate.getDate() - days);
+        document.getElementById('filterDateFrom').value = fromDate.toISOString().slice(0,10);
+        document.getElementById('filterDateTo').value = to;
+      };
+    });
+    document.getElementById('filterApplyBtn').onclick = ()=>{
+      dateFilters[column] = {
+        from: document.getElementById('filterDateFrom').value,
+        to: document.getElementById('filterDateTo').value
+      };
+      closeFilterPopover();
+      updateFilterButtonStates();
+      render();
+    };
+    document.getElementById('filterClearBtn').onclick = ()=>{
+      dateFilters[column] = { from: '', to: '' };
+      closeFilterPopover();
+      updateFilterButtonStates();
+      render();
+    };
+  }
+
+  document.querySelectorAll('.th-filter-btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      e.stopPropagation(); // don't also trigger the header's sort click
+      const column = btn.dataset.filter;
+      const alreadyOpenForThis = filterPopover.classList.contains('open') && filterPopover.dataset.column === column;
+      if(alreadyOpenForThis){ closeFilterPopover(); return; }
+
+      filterPopover.dataset.column = column;
+      if(column==='type' || column==='status') openChecklistPopover(column);
+      else openDateRangePopover(column);
+
+      const rect = btn.getBoundingClientRect();
+      filterPopover.style.top = (rect.bottom + 6) + 'px';
+      let left = rect.left;
+      // Keep the popover on-screen if it would overflow the right edge
+      const estimatedWidth = 220;
+      if(left + estimatedWidth > window.innerWidth - 12) left = window.innerWidth - estimatedWidth - 12;
+      filterPopover.style.left = left + 'px';
+      filterPopover.classList.add('open');
+    });
+  });
+
+  document.addEventListener('click', e=>{
+    if(filterPopover.classList.contains('open') && !filterPopover.contains(e.target) && !e.target.classList.contains('th-filter-btn')){
+      closeFilterPopover();
+    }
+  });
+  window.addEventListener('scroll', closeFilterPopover, true);
+  window.addEventListener('resize', closeFilterPopover);
+
   // ---- CSV export ----
   document.getElementById('btnExport').onclick = ()=>{
     try{
       if(submissions.length===0){ toast('Nothing to export yet'); return; }
-      const header = ['Portal','Submitted','Status','Last Updated','Notes','Submission Text','Supporting Text','Submission Photo URL','Supporting Photo URL'];
+      const header = ['Portal','Type','Edit Field','Submitted','Status','Last Updated','Notes','Submission Text','Supporting Text','Submission Photo URL','Supporting Photo URL'];
       const rows = submissions.map(s=>[
-        s.portal, s.submitted, s.status, s.updated, s.notes||'',
+        s.portal, s.type||'Nomination', s.editField||'', s.submitted, s.status, s.updated, s.notes||'',
         s.submissionText||'', s.supportingText||'', s.photoUrl||'', s.supportingPhotoUrl||''
       ]);
       const escapeCell = cell=>{

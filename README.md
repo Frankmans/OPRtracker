@@ -63,8 +63,11 @@ python gmail_wayspot_export.py
 - The first time you run it, a browser window opens asking you to log in and approve **read-only** Gmail access. The script cannot send, delete, or modify anything.
 - A `token.json` file is saved afterward so you won't have to log in again next time.
 - It searches for:
-  - `"Niantic Spatial Wayspot nomination received for"` — your submissions
-  - `"Decision on you Recon Nomination"` / `"Niantic Spatial Wayspot nomination decided for"` — the outcomes
+  - `"Niantic Spatial Wayspot nomination received for"` — new Wayspot nominations, plus their decisions
+  - `"Thanks! Niantic Spatial Wayspot Photo received for"` — photos added to *existing* Wayspots, plus their decisions
+  - `"Thanks! Niantic Spatial Wayspot edit suggestion received for"` — title/description/location edits suggested for an existing Wayspot, plus their decisions
+- Note: Niantic's photo-submission confirmation emails don't include any text or the photo itself (unlike nominations, which include both) — so those entries will only have a portal name, date, and eventual status.
+- Edit suggestions include the existing value and your suggested replacement, tagged with which field was edited (Title / Description / Location / etc).
 - It prints progress as it goes, then writes **`wayspot_submissions.json`** in the same folder.
 
 Re-run it anytime to pick up new submissions or decisions — the tracker's import step below is smart about merging updates.
@@ -94,9 +97,10 @@ Re-import anytime after re-running the script to bring in new decisions.
 
 ### What you can do
 - **Click any portal name** to open its detail view — submission text, supporting text, and both photos (submission + supporting), each clickable for a full-size view
+- Each entry is tagged **Nomination**, **Photo** (a photo added to an existing Wayspot), or **Edit** (a suggested title/description/location change) — sortable by that column too
 - **Add / Edit / Delete** entries by hand
 - **Parse email** — paste a single confirmation email's text to auto-fill a new entry, if you'd rather not use the Python script for a one-off
-- **Search and filter** by status, **sort** any column
+- **Search, filter, and sort** — click any column label to sort; click the ▾ next to Type, Status, Submitted, or Last Updated to filter by a checklist of values (Type/Status) or a date range with quick presets like "Last 30 days" (Submitted/Last Updated)
 - **Export CSV** for a spreadsheet-friendly copy of everything
 - Attach your own photo to any entry (separate from the ones pulled from Gmail)
 
