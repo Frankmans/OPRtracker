@@ -131,6 +131,16 @@
     outline-offset:1px;
   }
   #search{flex:1; min-width:160px;}
+  .legacy-toggle{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-size:12px;
+    color:var(--text-muted);
+    white-space:nowrap;
+    cursor:pointer;
+  }
+  .legacy-toggle input{accent-color:var(--accent-green); cursor:pointer;}
   .btn{
     font-family:var(--font-display);
     font-size:12.5px;
@@ -255,6 +265,8 @@
     border-radius:3px;
     border:1px solid currentColor;
   }
+  .badge.status-clickable{cursor:pointer;}
+  .badge.status-clickable:hover{filter:brightness(1.3); box-shadow:0 0 0 2px rgba(255,255,255,.08);}
   .badge.Pending{color:var(--accent-amber);}
   .badge.Accepted{color:var(--accent-green);}
   .badge.Rejected{color:var(--accent-red);}
@@ -369,11 +381,16 @@
 
   <div class="controls">
     <input type="text" id="search" placeholder="Search by portal name or notes…">
+    <label class="legacy-toggle" title="Nominations that only exist in Niantic's pre-rebrand Wayfarer emails, with no Spatial-branded counterpart">
+      <input type="checkbox" id="includeLegacy" checked>
+      Include legacy Wayfarer-only entries
+    </label>
     <button class="btn ghost" id="btnParse">Parse email</button>
     <button class="btn ghost" id="btnImport">Import JSON</button>
     <input type="file" id="importInput" accept=".json,application/json" style="display:none;">
     <button class="btn ghost" id="btnExport">Export CSV</button>
     <button class="btn primary" id="btnAdd">+ Add submission</button>
+    <button class="btn danger" id="btnClearAll" title="Delete every entry in this tracker">Clear all</button>
   </div>
 
   <div class="table-wrap">
@@ -554,6 +571,7 @@
 
   function render(){
     const q = document.getElementById('search').value.trim().toLowerCase();
+    const includeLegacy = document.getElementById('includeLegacy').checked;
 
     let rows = submissions.filter(s=>{
       const matchesQ = !q || s.portal.toLowerCase().includes(q) || (s.notes||'').toLowerCase().includes(q);
@@ -562,7 +580,8 @@
       const matchesStatus = filterStatuses.size===0 || filterStatuses.has(s.status);
       const matchesSubmitted = inDateRange(s.submitted, dateFilters.submitted);
       const matchesUpdated = inDateRange(s.updated, dateFilters.updated);
-      return matchesQ && matchesType && matchesStatus && matchesSubmitted && matchesUpdated;
+      const matchesLegacy = includeLegacy || (s.source || 'Spatial') !== 'Wayfarer';
+      return matchesQ && matchesType && matchesStatus && matchesSubmitted && matchesUpdated && matchesLegacy;
     });
 
     rows.sort((a,b)=>{
@@ -590,7 +609,7 @@
         <td class="portal-name" data-act="detail" data-id="${s.id}">${escapeHtml(s.portal)}${hasDetail ? '<span class="has-detail" title="Has photo/description">●</span>' : ''}</td>
         <td><span class="type-badge ${typeClass}">${escapeHtml(typeLabel)}</span></td>
         <td>${s.submitted || '—'}</td>
-        <td><span class="badge ${s.status}">${s.status.toUpperCase()}</span></td>
+        <td><span class="badge ${s.status} status-clickable" data-act="status" data-id="${s.id}" title="Click to change status">${s.status.toUpperCase()}</span></td>
         <td>${s.updated || '—'}</td>
         <td class="notes">${escapeHtml(s.notes||'')}</td>
         <td><div class="row-actions">
@@ -612,6 +631,7 @@
       const res = await window.storage.get(STORAGE_KEY, false);
       const stored = res ? JSON.parse(res.value) : null;
       submissions = (stored && stored.submissions) ? stored.submissions : [];
+      document.getElementById('includeLegacy').checked = stored && typeof stored.includeLegacy === 'boolean' ? stored.includeLegacy : true;
     }catch(e){
       submissions = [];
     }
@@ -633,6 +653,7 @@
       const submitted = item.submitted_date || item.submitted || '';
       const status = item.status || 'Pending';
       const type = item.submission_type || item.type || 'Nomination';
+      const source = item.source || 'Spatial';
       const editField = item.edit_field || item.editField || '';
       const submissionText = item.submission_text ?? item.submissionText ?? '';
       const supportingText = item.supporting_text ?? item.supportingText ?? '';
@@ -647,6 +668,7 @@
       );
       if(existing){
         existing.status = status;
+        existing.source = source;
         existing.submissionText = submissionText;
         existing.supportingText = supportingText;
         existing.photoUrl = photoUrl;
@@ -655,7 +677,7 @@
         updated++;
       }else{
         submissions.push({
-          id: uid(), portal, submitted, status, type, editField, notes: '',
+          id: uid(), portal, submitted, status, type, source, editField, notes: '',
           submissionText, supportingText, photoUrl, supportingPhotoUrl, updated: now
         });
         added++;
@@ -666,7 +688,8 @@
 
   async function persist(){
     try{
-      const payload = JSON.stringify({ submissions });
+      const includeLegacy = document.getElementById('includeLegacy').checked;
+      const payload = JSON.stringify({ submissions, includeLegacy });
       const result = await window.storage.set(STORAGE_KEY, payload, false);
       if(!result){
         console.error('Storage error: set returned no result');
@@ -693,6 +716,25 @@
     document.getElementById('fPortal').focus();
   }
   document.getElementById('btnAdd').onclick = ()=>openEdit(null);
+
+  document.getElementById('btnClearAll').onclick = async ()=>{
+    if(submissions.length === 0){ toast('Nothing to clear'); return; }
+    const count = submissions.length;
+    const confirmed = confirm(
+      `Delete all ${count} entries in this tracker? This also removes any manually attached photos. This cannot be undone.`
+    );
+    if(!confirmed) return;
+
+    const photoIds = submissions.filter(s=>s.hasPhoto).map(s=>s.id);
+    for(const id of photoIds){
+      try{ await window.storage.delete('photo:' + id, false); }catch(e){ /* already gone or never existed */ }
+    }
+
+    submissions = [];
+    await persist();
+    render();
+    toast(`Cleared ${count} entries`);
+  };
 
   // ---- Import from gmail_wayspot_export.py output ----
   const importInput = document.getElementById('importInput');
@@ -748,7 +790,7 @@
   };
 
   tbody.addEventListener('click', e=>{
-    const target = e.target.closest('button, td[data-act]');
+    const target = e.target.closest('button, td[data-act], span[data-act]');
     if(!target) return;
     const id = target.dataset.id;
     const s = submissions.find(x=>x.id===id);
@@ -766,6 +808,9 @@
       }
     }else if(target.dataset.act==='detail'){
       openDetail(s);
+    }else if(target.dataset.act==='status'){
+      e.stopPropagation();
+      openStatusQuickPopover(s, target);
     }
   });
 
@@ -938,6 +983,10 @@
 
   // ---- Search / filter / sort ----
   document.getElementById('search').addEventListener('input', render);
+  document.getElementById('includeLegacy').addEventListener('change', async ()=>{
+    await persist();
+    render();
+  });
   document.querySelectorAll('[data-sort]').forEach(el=>{
     el.addEventListener('click', ()=>{
       const key = el.dataset.sort;
@@ -952,6 +1001,39 @@
   function closeFilterPopover(){
     filterPopover.classList.remove('open');
     filterPopover.dataset.column = '';
+  }
+
+  const STATUS_OPTIONS = ['Pending', 'Accepted', 'Rejected', 'Duplicate', 'Appeal'];
+
+  function openStatusQuickPopover(s, anchorEl){
+    filterPopover.dataset.column = 'quickstatus';
+    filterPopover.innerHTML = `
+      <div class="filter-popover-title">Change status</div>
+      ${STATUS_OPTIONS.map(v => `
+        <label class="filter-check">
+          <input type="radio" name="quickStatus" value="${escapeHtml(v)}" ${s.status===v ? 'checked' : ''}>
+          <span class="badge ${v}" style="pointer-events:none;">${v.toUpperCase()}</span>
+        </label>
+      `).join('')}
+    `;
+    filterPopover.querySelectorAll('input[name=quickStatus]').forEach(radio=>{
+      radio.addEventListener('change', async ()=>{
+        s.status = radio.value;
+        s.updated = todayISO();
+        await persist();
+        closeFilterPopover();
+        render();
+        toast(`Status set to ${radio.value}`);
+      });
+    });
+
+    const rect = anchorEl.getBoundingClientRect();
+    filterPopover.style.top = (rect.bottom + 6) + 'px';
+    let left = rect.left;
+    const estimatedWidth = 180;
+    if(left + estimatedWidth > window.innerWidth - 12) left = window.innerWidth - estimatedWidth - 12;
+    filterPopover.style.left = left + 'px';
+    filterPopover.classList.add('open');
   }
 
   function updateFilterButtonStates(){

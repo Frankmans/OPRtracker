@@ -102,6 +102,10 @@ NOMINATION_DECIDED_QUERY = (
     'subject:"Decision on you Recon Nomination" '
     'OR subject:"Niantic Spatial Wayspot nomination decided for"'
 )
+# Legacy (pre-"Spatial" rebrand) equivalents -- note the missing "Spatial",
+# which keeps these phrase-searches from overlapping with the ones above.
+WAYFARER_NOMINATION_RECEIVED_QUERY = 'subject:"Thanks! Niantic Wayspot nomination received for"'
+WAYFARER_NOMINATION_DECIDED_QUERY = 'subject:"Niantic Wayspot nomination decided for"'
 PHOTO_RECEIVED_QUERY = 'subject:"Thanks! Niantic Spatial Wayspot Photo received for"'
 PHOTO_DECIDED_QUERY = 'subject:"Niantic Spatial Wayspot media submission decided for"'
 EDIT_RECEIVED_QUERY = 'subject:"Thanks! Niantic Spatial Wayspot edit suggestion received for"'
@@ -265,8 +269,69 @@ def parse_nomination_email(subject, html_body):
     }
 
 
+def parse_wayfarer_nomination_email(subject, plaintext_body, html_body):
+    """Legacy (pre-'Spatial' rebrand) format: 'Thanks! Niantic Wayspot
+    nomination received for X!' from wayfarer.nianticlabs.com. Unlike the
+    newer Spatial-branded template (separate styled <div> per line), this
+    older one runs everything together in one HTML cell joined by <br>
+    tags -- centered_text_blocks() finds nothing useful here, so this parses
+    the plaintext body's line structure instead. Photo <img alt="..."> tags
+    are the same in both formats, so that part is reused as-is."""
+    soup = BeautifulSoup(html_body, "html.parser")
+    portal_name = parse_nomination_portal_name(subject)  # same "received for X!" shape
+
+    def photo_url(alt_text):
+        img = soup.find("img", alt=alt_text)
+        return img["src"] if img and img.has_attr("src") else None
+
+    submission_photo = photo_url("Submission Photo")
+    supporting_photo = photo_url("Supporting Photo")
+
+    lines = [l.strip() for l in plaintext_body.split("\n")]
+    try:
+        marker_idx = next(
+            i for i, l in enumerate(lines)
+            if "what you" in l.lower() and "submitted" in l.lower()
+        )
+    except StopIteration:
+        marker_idx = -1
+
+    submission_text, supporting_text, extra_text = "", "", []
+    if marker_idx >= 0:
+        cleaned = []
+        for l in lines[marker_idx + 1:]:
+            if not l:
+                continue
+            if l.startswith("Your nomination will be reviewed") or "Wayfarer Criteria" in l:
+                break
+            cleaned.append(l)
+        # First non-empty line is usually the portal name repeated -- drop it.
+        if cleaned and cleaned[0].strip().lower() == portal_name.strip().lower():
+            cleaned = cleaned[1:]
+        if len(cleaned) > 0:
+            submission_text = cleaned[0]
+        if len(cleaned) > 1:
+            supporting_text = cleaned[1]
+        if len(cleaned) > 2:
+            extra_text = cleaned[2:]
+
+    return {
+        "portal": portal_name,
+        "submission_text": submission_text,
+        "supporting_text": supporting_text,
+        "extra_text": extra_text,
+        "submission_photo_url": submission_photo,
+        "supporting_photo_url": supporting_photo,
+    }
+
+
 def parse_nomination_decision(subject, plaintext_body, html_body):
-    """Return ('Accepted'|'Rejected'|None, portal_name)."""
+    """Return ('Accepted'|'Rejected'|None, portal_name).
+    Tries several ways to find the portal name, in order of reliability,
+    since Niantic's "Decision on you Recon Nomination" template isn't
+    consistent -- sometimes the name is in the subject, sometimes the body
+    isolates it in its own short div, and sometimes it's buried mid-sentence
+    in one long paragraph (which broke the old div-length-only heuristic)."""
     text = (plaintext_body + " " + html_body).lower()
     status = None
     if "congratulations" in text and "accept" in text:
@@ -274,12 +339,26 @@ def parse_nomination_decision(subject, plaintext_body, html_body):
     elif "not accept" in text or "unfortunately" in text:
         status = "Rejected"
 
+    # "Niantic Spatial Wayspot nomination decided for X"
     m = re.search(r"nomination decided for (.+?)!?\s*$", subject, re.IGNORECASE)
     if m:
         return status, m.group(1).strip()
 
-    # "Decision on you Recon Nomination" doesn't include the name in the
-    # subject -- pull it from the body instead.
+    # "Decision on you Recon Nomination, X" -- name after a comma
+    m = re.search(r"Decision on you Recon Nomination,\s*(.+?)\s*$", subject, re.IGNORECASE)
+    if m and m.group(1).strip():
+        return status, m.group(1).strip()
+
+    # Fall back to the plaintext body's "...nominate X on <date>..." phrasing.
+    # Collapse whitespace first: Niantic sometimes wraps this sentence across
+    # several lines, which would otherwise break a simple regex match.
+    collapsed = re.sub(r"\s+", " ", plaintext_body)
+    m = re.search(r"nominate\s+(.+?)\s+on\s+[A-Za-z]+ \d{1,2},? \d{4}", collapsed)
+    if m:
+        return status, m.group(1).strip()
+
+    # Last resort: a short centered text div (works when Niantic's template
+    # isolates the portal name on its own line rather than mid-paragraph).
     soup = BeautifulSoup(html_body, "html.parser")
     candidates = [
         d for d in centered_text_blocks(soup)
@@ -423,6 +502,7 @@ def collect_edits(service):
             "submitted_date": date_iso,
             "status": "Pending",
             "submission_type": "Edit",
+            "source": "Spatial",
         }
         print(f"  [{i}/{len(received_ids)}] {parsed['portal']} ({parsed['edit_field']})")
 
@@ -641,6 +721,7 @@ def apply_appeals(entries, service):
                 "submitted_date": parsed["original_submitted_date"] or "",
                 "status": "Appeal",
                 "submission_type": fallback_type,
+                "source": "Spatial",
                 "edit_field": parsed["edit_field"],
                 "submission_text": parsed["submission_text"],
                 "supporting_text": parsed["supporting_text"],
@@ -679,6 +760,118 @@ def apply_appeals(entries, service):
             print(f"  [{i}/{len(decided_ids)}] Could not match decided appeal for '{portal_guess}' to a Pending appeal")
 
 
+# ---------------------------------------------------------------------------
+# Collection -- Nominations (merges current Spatial + legacy Wayfarer eras)
+# ---------------------------------------------------------------------------
+def collect_nominations(service):
+    """Niantic rebranded Wayfarer as 'Recon'/'Spatial' at some point, and for
+    a transition window sent BOTH old- and new-branded emails for the same
+    nomination -- sometimes with conflicting decisions later (e.g. accepted
+    under the old system, then rejected under the new one after a re-review).
+    This merges both eras: Spatial data wins when both exist for the same
+    portal+date, legacy-only nominations are still included, and whichever
+    decision email is chronologically LATEST wins the final status -- not
+    just whichever was processed first."""
+    print("Searching for nomination received emails (Spatial)...")
+    spatial_ids = list_all_message_ids(service, NOMINATION_RECEIVED_QUERY)
+    print(f"  found {len(spatial_ids)} messages")
+    print("Searching for nomination received emails (legacy Wayfarer)...")
+    wayfarer_ids = list_all_message_ids(service, WAYFARER_NOMINATION_RECEIVED_QUERY)
+    print(f"  found {len(wayfarer_ids)} messages")
+
+    entries = {}
+
+    for i, msg_id in enumerate(spatial_ids, 1):
+        msg = get_message(service, msg_id)
+        payload = msg["payload"]
+        subject = get_header(payload, "Subject")
+        date_iso = parse_email_date(get_header(payload, "Date"))
+        _, html = extract_bodies(payload)
+        parsed = parse_nomination_email(subject, html)
+        key = (parsed["portal"].lower(), date_iso)
+        entries[key] = {
+            **parsed,
+            "submitted_date": date_iso,
+            "status": "Pending",
+            "submission_type": "Nomination",
+            "source": "Spatial",
+            "_last_decision_date": None,
+        }
+        print(f"  [Spatial {i}/{len(spatial_ids)}] {parsed['portal']}")
+
+    legacy_only_count = 0
+    for i, msg_id in enumerate(wayfarer_ids, 1):
+        msg = get_message(service, msg_id)
+        payload = msg["payload"]
+        subject = get_header(payload, "Subject")
+        date_iso = parse_email_date(get_header(payload, "Date"))
+        plaintext, html = extract_bodies(payload)
+        parsed = parse_wayfarer_nomination_email(subject, plaintext, html)
+        key = (parsed["portal"].lower(), date_iso)
+        if key in entries:
+            print(f"  [Wayfarer {i}/{len(wayfarer_ids)}] {parsed['portal']} -- already captured via Spatial email, skipped")
+            continue
+        entries[key] = {
+            **parsed,
+            "submitted_date": date_iso,
+            "status": "Pending",
+            "submission_type": "Nomination",
+            "source": "Wayfarer",
+            "_last_decision_date": None,
+        }
+        legacy_only_count += 1
+        print(f"  [Wayfarer {i}/{len(wayfarer_ids)}] {parsed['portal']} (legacy-only nomination)")
+
+    print(f"\n{legacy_only_count} nomination(s) existed only in the legacy Wayfarer emails.")
+
+    print("\nSearching for nomination decision emails (Spatial)...")
+    spatial_decided_ids = list_all_message_ids(service, NOMINATION_DECIDED_QUERY)
+    print(f"  found {len(spatial_decided_ids)} messages")
+    print("Searching for nomination decision emails (legacy Wayfarer)...")
+    wayfarer_decided_ids = list_all_message_ids(service, WAYFARER_NOMINATION_DECIDED_QUERY)
+    print(f"  found {len(wayfarer_decided_ids)} messages")
+
+    all_decided = (
+        [(mid, "Spatial") for mid in spatial_decided_ids]
+        + [(mid, "Wayfarer") for mid in wayfarer_decided_ids]
+    )
+
+    for i, (msg_id, source) in enumerate(all_decided, 1):
+        msg = get_message(service, msg_id)
+        payload = msg["payload"]
+        subject = get_header(payload, "Subject")
+        decision_date = parse_email_date(get_header(payload, "Date"))
+        plaintext, html = extract_bodies(payload)
+        status, portal_guess = parse_nomination_decision(subject, plaintext, html)
+        if not status or not portal_guess:
+            print(f"  [{source} {i}/{len(all_decided)}] Could not parse this decision email -- skipped")
+            continue
+
+        # NOTE: matches by portal name only (not date), same limitation the
+        # original code had. If the same portal name was nominated more than
+        # once, a decision could in rare cases match the wrong instance.
+        match = None
+        for e in entries.values():
+            if e["portal"].lower() == portal_guess.lower():
+                match = e
+                break
+        if not match:
+            print(f"  [{source} {i}/{len(all_decided)}] {portal_guess} -> {status} (no matching nomination found -- skipped)")
+            continue
+
+        prev_date = match.get("_last_decision_date")
+        if prev_date is None or (decision_date and decision_date >= prev_date):
+            match["status"] = status
+            match["_last_decision_date"] = decision_date
+            print(f"  [{source} {i}/{len(all_decided)}] {portal_guess} -> {status} (decided {decision_date or 'unknown date'})")
+        else:
+            print(f"  [{source} {i}/{len(all_decided)}] {portal_guess} -> {status} (decided {decision_date}) -- older than an already-applied decision, ignored")
+
+    for e in entries.values():
+        e.pop("_last_decision_date", None)
+
+    return list(entries.values())
+
 
 def collect(service, received_query, decided_query, parse_received_fn, parse_decision_fn,
             submission_type, label):
@@ -701,6 +894,7 @@ def collect(service, received_query, decided_query, parse_received_fn, parse_dec
             "submitted_date": date_iso,
             "status": "Pending",
             "submission_type": submission_type,
+            "source": "Spatial",
         }
         print(f"  [{i}/{len(received_ids)}] {parsed['portal']}")
 
@@ -731,12 +925,7 @@ def collect(service, received_query, decided_query, parse_received_fn, parse_dec
 def main():
     service = get_gmail_service()
 
-    nominations = collect(
-        service,
-        NOMINATION_RECEIVED_QUERY, NOMINATION_DECIDED_QUERY,
-        parse_nomination_email, parse_nomination_decision,
-        submission_type="Nomination", label="nomination",
-    )
+    nominations = collect_nominations(service)
     print()
     photos = collect(
         service,

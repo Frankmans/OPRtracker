@@ -19,7 +19,7 @@
   <rect x="30" y="30" width="460" height="560" rx="8" class="panel"/>
 
   <text x="54" y="70" class="mono" font-size="18" font-weight="700">Example Mural</text>
-  <text x="54" y="90" class="muted" font-size="12">2026-04-02 — Pending</text>
+  <text x="54" y="90" class="muted" font-size="12">Nomination — 2026-04-02 — Pending</text>
 
   <!-- From Gmail photos -->
   <text x="54" y="122" class="label" font-size="10">FROM GMAIL</text>

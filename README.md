@@ -64,6 +64,7 @@ python gmail_wayspot_export.py
 - A `token.json` file is saved afterward so you won't have to log in again next time.
 - It searches for:
   - `"Niantic Spatial Wayspot nomination received for"` — new Wayspot nominations, plus their decisions
+  - `"Thanks! Niantic Wayspot nomination received for"` (no "Spatial") — the same, but from before Niantic's Wayfarer→Spatial rebrand, plus their decisions
   - `"Thanks! Niantic Spatial Wayspot Photo received for"` — photos added to *existing* Wayspots, plus their decisions
   - `"Thanks! Niantic Spatial Wayspot edit suggestion received for"` — title/description/location edits suggested for an existing Wayspot, plus their decisions
   - `"Thanks! Niantic Spatial Wayspot appeal received"` / `"...title edit appeal received for"` — appeals of a rejected nomination, photo, or edit
@@ -71,6 +72,7 @@ python gmail_wayspot_export.py
 - Edit suggestions include the existing value and your suggested replacement, tagged with which field was edited (Title / Description / Location / etc).
 - **Appeals aren't a new row** — an appeal email references the original submission by name and date, so the script finds that entry and flips its status to `Appeal` instead of duplicating it. If it can't find a confident match, it adds the appeal as its own row instead of silently dropping it, with a note flagging it for manual review.
 - ⚠️ **Known limitation:** the *decided*-appeal email subject (`"Your Niantic Spatial Wayspot appeal has been decided"`) is a best guess — no real example was available while building this. If your appeal statuses don't update correctly after a decision comes in, open one of those emails, compare it against `parse_appeal_decision()` in the script, and adjust the parsing to match the real wording.
+- **Old and new nomination emails are merged, not duplicated.** Niantic sent both Wayfarer- and Spatial-branded emails for the same nominations during the rebrand transition, sometimes with different decisions on each (e.g. accepted under the old system, later rejected under the new one after a re-review). This script keeps one entry per nomination and always applies whichever decision email is chronologically the most recent, regardless of which branding it came from.
 - It prints progress as it goes, then writes **`wayspot_submissions.json`** in the same folder.
 
 Re-run it anytime to pick up new submissions or decisions — the tracker's import step below is smart about merging updates.
@@ -102,10 +104,13 @@ Re-import anytime after re-running the script to bring in new decisions.
 - **Click any portal name** to open its detail view — submission text, supporting text, and both photos (submission + supporting), each clickable for a full-size view
 - Each entry is tagged **Nomination**, **Photo** (a photo added to an existing Wayspot), or **Edit** (a suggested title/description/location change) — sortable by that column too
 - **Add / Edit / Delete** entries by hand
+- **Click any status badge** for a one-click status change (Pending/Accepted/Rejected/Duplicate/Appeal), without opening the full edit form
 - **Parse email** — paste a single confirmation email's text to auto-fill a new entry, if you'd rather not use the Python script for a one-off
 - **Search, filter, and sort** — click any column label to sort; click the ▾ next to Type, Status, Submitted, or Last Updated to filter by a checklist of values (Type/Status) or a date range with quick presets like "Last 30 days" (Submitted/Last Updated)
+- A checkbox toggles whether **legacy Wayfarer-only nominations** (ones with no Spatial-branded counterpart, from before Niantic's rebrand) are shown — on by default, so nothing's hidden unless you choose to
 - **Export CSV** for a spreadsheet-friendly copy of everything
 - Attach your own photo to any entry (separate from the ones pulled from Gmail)
+- **Clear all** — wipes every entry (with a confirmation first), if you want to start fresh
 
 ### Privacy
 All data is stored locally to this file/browser — nothing is sent to any server. The photo URLs point to Google's own image hosting (the same links from your emails), so viewing them does briefly contact Google's servers, same as opening the original email would.
