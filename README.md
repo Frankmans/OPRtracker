@@ -69,11 +69,15 @@ python gmail_wayspot_export.py
   - `"Thanks! Niantic Spatial Wayspot edit suggestion received for"` — title/description/location edits suggested for an existing Wayspot, plus their decisions
   - `"Thanks! Niantic Spatial Wayspot appeal received"` / `"...title edit appeal received for"` — appeals of a rejected nomination, photo, or edit
 - Note: Niantic's photo-submission confirmation emails don't include any text or the photo itself (unlike nominations, which include both) — so those entries will only have a portal name, date, and eventual status.
+- **Coordinates**: the legacy Wayfarer emails include a `(lat, lng)` pair that the newer Spatial emails don't (confirmed by checking a real Spatial email, not assumed). These are captured automatically for Wayfarer-era nominations. For everything else — Spatial nominations, photos, edits, or anything from before this feature existed — coordinates can be filled in by hand in the app.
 - Edit suggestions include the existing value and your suggested replacement, tagged with which field was edited (Title / Description / Location / etc).
 - **Appeals aren't a new row** — an appeal email references the original submission by name and date, so the script finds that entry and flips its status to `Appeal` instead of duplicating it. If it can't find a confident match, it adds the appeal as its own row instead of silently dropping it, with a note flagging it for manual review.
 - ⚠️ **Known limitation:** the *decided*-appeal email subject (`"Your Niantic Spatial Wayspot appeal has been decided"`) is a best guess — no real example was available while building this. If your appeal statuses don't update correctly after a decision comes in, open one of those emails, compare it against `parse_appeal_decision()` in the script, and adjust the parsing to match the real wording.
-- **Old and new nomination emails are merged, not duplicated.** Niantic sent both Wayfarer- and Spatial-branded emails for the same nominations during the rebrand transition, sometimes with different decisions on each (e.g. accepted under the old system, later rejected under the new one after a re-review). This script keeps one entry per nomination and always applies whichever decision email is chronologically the most recent, regardless of which branding it came from.
-- It prints progress as it goes, then writes **`wayspot_submissions.json`** in the same folder.
+- **Old and new nomination emails are merged, not duplicated.** Niantic's nomination system has gone through three eras — OPR (`nominations@portals.ingress.com`, the original Ingress portal review system), Wayfarer, and now Spatial/Recon — and this script merges all three: Spatial data wins when more than one exists for the same portal+date, legacy-only nominations from either older era are still included, and whichever decision email is chronologically the most recent wins the final status (sometimes a portal was accepted under an older system and later rejected under a newer one after a re-review).
+- **OPR is the simplest era**: one description paragraph (no separate "supporting text"), one photo, no coordinates. Its decision emails also use different wording than the other two ("Excellent work, Agent... eligible Portal nomination" rather than "Congratulations... accepted") — confirmed against real emails before building this, since guessing wrong here would have silently misclassified every OPR-era acceptance.
+- **Renamed portals are reconciled, not lost.** If a nomination's title was changed via an accepted title-edit suggestion before its final decision arrived, Niantic's decision email can reference the *new* name — which won't match the original submission by name alone. The script builds a map of every accepted title edit and retries any decision that didn't match directly against it, so the right nomination still gets updated. If a decision genuinely can't be matched even after that (shouldn't normally happen), it's added as its own flagged row instead of silently dropped, and the script prints a clear summary either way — either "All decision emails were successfully matched" or a list of exactly which ones weren't, so you always know the full accept/reject picture is reflected somewhere.
+- It prints progress as it goes, then writes **`wayspot_submissions.json`** in the same folder, shaped as `{ "exported_at": "...", "submissions": [...] }` — the timestamp lets the tracker show when your Gmail data was actually last fetched, not just when you happened to click Import. (Older plain-array exports from before this change still import fine.)
+- **Incremental sync**: after the first run, it only fetches messages newer than the last run (tracked in a small `sync_state.json` file, with a 1-day safety buffer) and merges them into your existing data — so re-running weekly to catch new decisions takes seconds instead of re-scanning your whole mailbox. This applies to decision/appeal emails too, so a decision arriving for a nomination from months ago still gets applied correctly to that old entry. Delete `sync_state.json` if you ever want to force a full re-sync from scratch (e.g. after this script gets a parsing fix).
 
 Re-run it anytime to pick up new submissions or decisions — the tracker's import step below is smart about merging updates.
 
@@ -84,6 +88,7 @@ Re-run it anytime to pick up new submissions or decisions — the tracker's impo
 | `FileNotFoundError: credentials.json` | You haven't completed step 5 above, or the file isn't named/placed correctly. |
 | Browser says "app isn't verified" | Click **Advanced → Go to [app name] (unsafe)**. This is normal for a personal script only you use — you added yourself as a test user in step 4. |
 | `403` or `access_denied` | Make sure you added your own email under **Test users** in the OAuth consent screen. |
+| `RefreshError: invalid_grant` | Your saved login expired or was revoked. The script now handles this automatically (opens a fresh login instead of crashing) — if you're on an older copy, just delete `token.json` and run again. This is *expected to happen roughly every 7 days* as long as the OAuth app stays in Google's "Testing" status, since Google expires refresh tokens for unverified apps on that schedule — not a bug you need to fix, just re-log-in when it happens. |
 | No results found | Double-check the emails are actually in Gmail (not archived to a different account) and that the subject lines match — Niantic may have changed wording since this was written. |
 
 ---
@@ -110,6 +115,8 @@ Re-import anytime after re-running the script to bring in new decisions.
 - A checkbox toggles whether **legacy Wayfarer-only nominations** (ones with no Spatial-branded counterpart, from before Niantic's rebrand) are shown — on by default, so nothing's hidden unless you choose to
 - **Export CSV** for a spreadsheet-friendly copy of everything
 - Attach your own photo to any entry (separate from the ones pulled from Gmail)
+- **"Gmail data last synced"** shown right under the header, using the export script's own timestamp — turns amber if it's been over 30 days
+- **Coordinates** — auto-filled for legacy Wayfarer nominations; editable by hand for anything else, with a "View on map" link that appears once both fields are filled
 - **Clear all** — wipes every entry (with a confirmation first), if you want to start fresh
 
 ### Privacy
@@ -123,6 +130,7 @@ All data is stored locally to this file/browser — nothing is sent to any serve
 |---|---|
 | `gmail_wayspot_export.py` | Reads your Gmail, writes `wayspot_submissions.json` |
 | `requirements.txt` | Python dependencies for the export script |
+| `sync_state.json` | Created automatically after your first run — tracks incremental sync progress. Delete to force a full re-sync. |
 | `portal-submission-tracker.html` | The tracker app itself |
 | `screenshot-overview.svg` / `screenshot-detail.svg` | Placeholder screenshots used in this README |
 | `README.md` | This file |

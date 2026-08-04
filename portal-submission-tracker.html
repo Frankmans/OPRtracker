@@ -6,6 +6,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
 <style>
   :root{
     --bg: #0a0e0c;
@@ -59,6 +64,13 @@
     margin:0;
     max-width:560px;
   }
+  .last-sync{
+    font-family:var(--font-display);
+    font-size:11px !important;
+    color:var(--text-muted);
+    margin-top:8px !important;
+  }
+  .last-sync.stale{color:var(--accent-amber);}
   .scanline{
     position:absolute;
     left:-40%;
@@ -141,6 +153,27 @@
     cursor:pointer;
   }
   .legacy-toggle input{accent-color:var(--accent-green); cursor:pointer;}
+
+  .bulk-bar{
+    display:none;
+    align-items:center;
+    gap:12px;
+    background:var(--panel-alt);
+    border:1px solid var(--accent-cyan);
+    border-radius:6px;
+    padding:10px 14px;
+    margin-bottom:12px;
+    font-size:13px;
+  }
+  .bulk-bar.show{display:flex;}
+  .bulk-bar #bulkCount{
+    font-family:var(--font-display);
+    font-size:12px;
+    color:var(--accent-cyan);
+    margin-right:auto;
+  }
+  .row-checkbox, #selectAllCheckbox{accent-color:var(--accent-green); cursor:pointer;}
+
   .btn{
     font-family:var(--font-display);
     font-size:12.5px;
@@ -197,6 +230,7 @@
   }
   .th-filter-btn:hover{color:var(--accent-cyan);}
   .th-filter-btn.active{color:var(--accent-green); background:rgba(0,224,138,.12);}
+  #btnCountryFilter.active{color:var(--accent-green); border-color:var(--accent-green); background:rgba(0,224,138,.12);}
   .filter-popover{
     position:fixed;
     display:none;
@@ -353,13 +387,190 @@
   }
   .lightbox.open{display:flex;}
   .lightbox img{max-width:100%; max-height:100%; border-radius:6px;}
+
+  .map-overlay{
+    position:fixed; inset:0; background:rgba(4,8,6,.92);
+    display:none; align-items:center; justify-content:center; padding:24px; z-index:35;
+  }
+  .map-overlay.open{display:flex;}
+  .map-panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    width:100%; height:100%; max-width:1400px; display:flex; flex-direction:column; overflow:hidden;
+  }
+  .map-header{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:16px 20px; border-bottom:1px solid var(--border); background:var(--panel-alt);
+    flex-wrap:wrap;
+  }
+  .map-header h2{font-family:var(--font-display); font-size:16px; margin:0 0 3px;}
+  .map-subtitle{margin:0; font-size:12px; color:var(--text-muted);}
+  .map-legend{display:flex; gap:14px; flex-wrap:wrap;}
+  .legend-item{display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-muted);}
+  .legend-dot{width:10px; height:10px; border-radius:50%; display:inline-block; border:1px solid rgba(0,0,0,.3);}
+  #mapContainer{flex:1; min-height:0;}
+
+  .picker-overlay{
+    position:fixed; inset:0; background:rgba(4,8,6,.94);
+    display:none; align-items:center; justify-content:center; padding:24px; z-index:50;
+  }
+  .picker-overlay.open{display:flex;}
+  .picker-panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    width:100%; max-width:760px; height:min(600px, 90vh);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .picker-header{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:16px 20px; border-bottom:1px solid var(--border); background:var(--panel-alt);
+  }
+  .picker-header h2{font-family:var(--font-display); font-size:16px; margin:0 0 3px;}
+  #pickerMapContainer{flex:1; min-height:0; cursor:crosshair;}
+  .picker-footer{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 20px; border-top:1px solid var(--border); background:var(--panel-alt);
+    font-size:12.5px;
+  }
+  .picker-footer .muted{color:var(--text-muted); font-family:var(--font-display);}
+  .picker-marker{
+    width:18px; height:18px; border-radius:50% 50% 50% 0; transform:rotate(-45deg);
+    background:var(--accent-green); border:2px solid #04140d;
+  }
+
+  .dashboard-content{
+    flex:1; overflow-y:auto; padding:22px 26px;
+  }
+
+  .gallery-content{
+    flex:1; overflow-y:auto; padding:20px;
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr));
+    gap:16px; align-content:start;
+  }
+  .gallery-tile{
+    background:var(--panel-alt); border:1px solid var(--border); border-radius:6px;
+    overflow:hidden; display:flex; flex-direction:column;
+  }
+  .gallery-tile img{
+    width:100%; aspect-ratio:1/1; object-fit:cover; cursor:zoom-in;
+    background:var(--panel); display:block;
+  }
+  .gallery-caption{padding:8px 10px;}
+  .gallery-portal{font-size:12.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .gallery-meta{font-size:10.5px; color:var(--text-muted); margin-top:2px; display:flex; justify-content:space-between; align-items:center;}
+  .gallery-view-link{
+    font-family:var(--font-display); color:var(--accent-cyan); text-decoration:none; cursor:pointer;
+  }
+  .gallery-view-link:hover{text-decoration:underline;}
+  .gallery-empty{grid-column:1/-1; color:var(--text-muted); font-size:14px; text-align:center; padding:60px 20px;}
+  .dash-section{margin-bottom:28px;}
+  .dash-section h3{
+    font-family:var(--font-display); font-size:12px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--text-muted); margin:0 0 12px;
+  }
+  .dash-stat-grid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+    gap:12px;
+  }
+  .dash-stat{
+    background:var(--panel-alt); border:1px solid var(--border); border-radius:6px;
+    padding:14px 16px;
+  }
+  .dash-stat .num{font-family:var(--font-display); font-size:26px; font-weight:700; line-height:1;}
+  .dash-stat .label{margin-top:6px; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.08em;}
+  .dash-bar-row{display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:13px;}
+  .dash-bar-label{width:150px; flex-shrink:0; color:var(--text);}
+  .dash-bar-track{flex:1; background:var(--panel-alt); border-radius:4px; height:18px; overflow:hidden; border:1px solid var(--border);}
+  .dash-bar-fill{height:100%; border-radius:4px 0 0 4px;}
+  .dash-bar-count{width:110px; flex-shrink:0; text-align:right; color:var(--text-muted); font-family:var(--font-display); font-size:11.5px;}
+
+  .dash-timeline{
+    display:flex; align-items:flex-end; gap:6px;
+    overflow-x:auto; padding-bottom:8px;
+    min-height:170px;
+  }
+  .timeline-col{
+    display:flex; flex-direction:column; align-items:center;
+    flex-shrink:0; width:26px;
+  }
+  .timeline-count{
+    font-family:var(--font-display); font-size:10px; color:var(--text-muted);
+    margin-bottom:4px; height:12px;
+  }
+  .timeline-bar{
+    width:16px; display:flex; flex-direction:column-reverse;
+    border-radius:2px 2px 0 0; overflow:hidden; background:var(--panel-alt);
+    border:1px solid var(--border); border-bottom:none;
+  }
+  .timeline-seg{width:100%;}
+  .timeline-label{
+    font-size:9.5px; color:var(--text-muted); margin-top:6px;
+    writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap;
+    max-height:60px;
+  }
+  .dash-stale-table{width:100%; border-collapse:collapse; font-size:13px;}
+  .dash-stale-table th{
+    text-align:left; font-family:var(--font-display); font-size:10px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--text-muted); padding:8px 10px; border-bottom:1px solid var(--border);
+  }
+  .dash-stale-table td{padding:8px 10px; border-bottom:1px solid var(--border);}
+  .dash-stale-table tr:last-child td{border-bottom:none;}
+  .dash-stale-table tr{cursor:pointer;}
+  .dash-stale-table tr:hover{background:rgba(255,255,255,.03);}
+  .dash-empty{color:var(--text-muted); font-size:13px; padding:8px 0;}
+  .dup-link{color:var(--accent-cyan); cursor:pointer; text-decoration:none;}
+  .dup-link:hover{text-decoration:underline;}
+  .proximity-flag{margin-left:6px; color:var(--accent-amber); cursor:help; font-size:12px;}
+  .map-empty{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    color:var(--text-muted); font-size:14px; text-align:center; padding:40px;
+  }
+
+  /* Leaflet popup theming to match the app */
+  .leaflet-popup-content-wrapper{
+    background:var(--panel); color:var(--text); border-radius:6px;
+    border:1px solid var(--border); font-family:var(--font-body);
+  }
+  .leaflet-popup-tip{background:var(--panel); border:1px solid var(--border);}
+  .leaflet-popup-content{margin:12px 14px; font-size:13px;}
+  .map-popup-title{font-weight:600; margin-bottom:4px;}
+  .map-popup-meta{color:var(--text-muted); font-size:11.5px; margin-bottom:8px;}
+  .map-popup-link{
+    display:inline-block; font-family:var(--font-display); font-size:11px;
+    color:var(--accent-green); text-decoration:none; border:1px solid var(--accent-green);
+    border-radius:4px; padding:4px 9px; cursor:pointer;
+  }
+  .map-popup-link:hover{background:rgba(0,224,138,.12);}
+  .marker-dot{
+    width:16px; height:16px; border-radius:50%; border:2px solid #04140d;
+    box-shadow:0 0 0 1px rgba(255,255,255,.4);
+  }
+
+  /* Cluster bubbles, restyled to match the app instead of Leaflet's default
+     yellow/orange/red scale */
+  .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large{
+    background:rgba(0,224,138,.25);
+  }
+  .marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div{
+    background:#10160f;
+    border:2px solid var(--accent-green);
+    color:var(--text);
+    font-family:var(--font-display);
+    font-weight:700;
+  }
+
   .toast{
     position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
     background:var(--panel-alt); border:1px solid var(--accent-green); color:var(--accent-green);
     font-family:var(--font-display); font-size:12.5px; padding:10px 16px; border-radius:6px;
     opacity:0; pointer-events:none; transition:opacity .2s; z-index:20;
+    display:flex; align-items:center; gap:14px;
   }
-  .toast.show{opacity:1;}
+  .toast.show{opacity:1; pointer-events:auto;}
+  #toastUndoBtn{
+    background:none; border:1px solid var(--accent-green); color:var(--accent-green);
+    font-family:var(--font-display); font-size:11.5px; padding:4px 10px; border-radius:4px;
+    cursor:pointer; white-space:nowrap;
+  }
+  #toastUndoBtn:hover{background:rgba(0,224,138,.15);}
   footer{margin-top:26px; text-align:center; color:var(--text-muted); font-size:11.5px;}
 </style>
 </head>
@@ -370,6 +581,7 @@
     <div class="eyebrow">// portal submission log</div>
     <h1>PORTAL SUBMISSION TRACKER</h1>
     <p>Track every Niantic Wayspot/portal nomination you've submitted, and where each one stands — pending, accepted, rejected, or under appeal. Import a Gmail export to bulk-load your history, or add and edit entries by hand.</p>
+    <p id="lastSyncIndicator" class="last-sync"></p>
   </header>
 
   <div class="stats">
@@ -380,23 +592,39 @@
   </div>
 
   <div class="controls">
-    <input type="text" id="search" placeholder="Search by portal name or notes…">
-    <label class="legacy-toggle" title="Nominations that only exist in Niantic's pre-rebrand Wayfarer emails, with no Spatial-branded counterpart">
+    <input type="text" id="search" placeholder="Search portal, notes, submission text…">
+    <label class="legacy-toggle" title="Nominations that only exist in Niantic's pre-Spatial emails (Wayfarer or the even older OPR system), with no Spatial-branded counterpart">
       <input type="checkbox" id="includeLegacy" checked>
-      Include legacy Wayfarer-only entries
+      Include legacy entries (Wayfarer/OPR)
     </label>
+    <button class="btn ghost" id="btnCountryFilter" data-filter="country" title="Filter by country (resolves coordinates to countries on first use)">🌍 Country ▾</button>
     <button class="btn ghost" id="btnParse">Parse email</button>
     <button class="btn ghost" id="btnImport">Import JSON</button>
     <input type="file" id="importInput" accept=".json,application/json" style="display:none;">
     <button class="btn ghost" id="btnExport">Export CSV</button>
+    <button class="btn ghost" id="btnBackup" title="Full-fidelity backup, including manually attached photos">Backup</button>
+    <button class="btn ghost" id="btnRestore" title="Restore from a Backup file (replaces everything currently in the tracker)">Restore</button>
+    <input type="file" id="restoreInput" accept=".json,application/json" style="display:none;">
+    <button class="btn ghost" id="btnMap">🗺 Map</button>
+    <button class="btn ghost" id="btnDashboard">📊 Dashboard</button>
+    <button class="btn ghost" id="btnGallery">🖼 Gallery</button>
     <button class="btn primary" id="btnAdd">+ Add submission</button>
     <button class="btn danger" id="btnClearAll" title="Delete every entry in this tracker">Clear all</button>
+  </div>
+
+  <div class="bulk-bar" id="bulkBar">
+    <span id="bulkCount">0 selected</span>
+    <button class="btn ghost" id="bulkChangeStatus">Change status</button>
+    <button class="btn ghost" id="bulkExportCsv">Export CSV</button>
+    <button class="btn danger" id="bulkDelete">Delete selected</button>
+    <button class="btn ghost" id="bulkClear">Clear selection</button>
   </div>
 
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
+          <th style="width:36px;"><input type="checkbox" id="selectAllCheckbox" title="Select all visible rows"></th>
           <th data-sort="portal">Portal</th>
           <th>
             <span data-sort="type">Type</span>
@@ -454,6 +682,14 @@
       <input type="date" id="fSubmitted">
     </div>
     <div class="field">
+      <label>Coordinates (optional)</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="fLatitude" placeholder="Latitude, e.g. 46.400453" style="flex:1;">
+        <input type="text" id="fLongitude" placeholder="Longitude, e.g. 14.100048" style="flex:1;">
+        <button type="button" class="btn ghost" id="fPickOnMap" style="white-space:nowrap;">📍 Pick on map</button>
+      </div>
+    </div>
+    <div class="field">
       <label>Status</label>
       <select id="fStatus">
         <option>Pending</option>
@@ -495,6 +731,16 @@
   <div class="modal">
     <h2 id="detailTitle">Portal</h2>
     <p class="sub" id="detailSub">Submitted — Status</p>
+    <div class="field">
+      <label>Coordinates</label>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <input type="text" id="detailLatitude" placeholder="Latitude" style="flex:1; min-width:100px;">
+        <input type="text" id="detailLongitude" placeholder="Longitude" style="flex:1; min-width:100px;">
+        <button type="button" class="btn ghost" id="detailPickOnMap" style="padding:9px 12px; white-space:nowrap;">📍 Pick on map</button>
+        <a id="detailMapLink" href="#" target="_blank" rel="noopener" class="btn ghost" style="padding:9px 12px; display:none; white-space:nowrap;">View on map</a>
+        <a id="detailIntelLink" href="#" target="_blank" rel="noopener" class="btn ghost" style="padding:9px 12px; display:none; white-space:nowrap;">Ingress Intel</a>
+      </div>
+    </div>
     <div class="field" id="gmailPhotosField" style="display:none;">
       <label>From Gmail</label>
       <div id="gmailPhotosRow" style="display:flex; gap:8px;"></div>
@@ -525,9 +771,82 @@
   <img id="lightboxImg" src="" alt="Submission photo">
 </div>
 
+<div class="map-overlay" id="mapOverlay">
+  <div class="map-panel">
+    <div class="map-header">
+      <div>
+        <h2>Contribution map</h2>
+        <p id="mapSubtitle" class="map-subtitle">Showing 0 of 0 entries with coordinates</p>
+      </div>
+      <div class="map-legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#ffb703;"></span>Pending</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#00e08a;"></span>Accepted</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#ff5d5d;"></span>Rejected</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#6b8579;"></span>Duplicate</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#3ec6ff;"></span>Appeal</span>
+      </div>
+      <label class="legacy-toggle">
+        <input type="checkbox" id="showRadiusCircles">
+        Show 20m radius circles
+      </label>
+      <button class="btn ghost" id="btnExportMapImage">🖼 Export as Image</button>
+      <button class="btn ghost" id="closeMap">Close</button>
+    </div>
+    <div id="mapContainer"></div>
+  </div>
+</div>
+
+<div class="map-overlay" id="dashboardOverlay">
+  <div class="map-panel">
+    <div class="map-header">
+      <div>
+        <h2>Dashboard</h2>
+        <p class="map-subtitle">A summary view across everything in this tracker</p>
+      </div>
+      <button class="btn ghost" id="btnExportInfographic">🖼 Export as Image</button>
+      <button class="btn ghost" id="closeDashboard">Close</button>
+    </div>
+    <div id="dashboardContent" class="dashboard-content"></div>
+  </div>
+</div>
+
+<div class="map-overlay" id="galleryOverlay">
+  <div class="map-panel">
+    <div class="map-header">
+      <div>
+        <h2>Photo gallery</h2>
+        <p id="gallerySubtitle" class="map-subtitle">Loading photos…</p>
+      </div>
+      <input type="text" id="gallerySearch" placeholder="Search by portal name…" style="max-width:220px;">
+      <button class="btn ghost" id="closeGallery">Close</button>
+    </div>
+    <div id="galleryContent" class="gallery-content"></div>
+  </div>
+</div>
+
 <div class="filter-popover" id="filterPopover"></div>
 
-<div class="toast" id="toast"></div>
+<div class="picker-overlay" id="pickerOverlay">
+  <div class="picker-panel">
+    <div class="picker-header">
+      <div>
+        <h2>Pick a location</h2>
+        <p class="map-subtitle">Click anywhere on the map to set coordinates</p>
+      </div>
+      <button class="btn ghost" id="closePicker">Cancel</button>
+    </div>
+    <div id="pickerMapContainer"></div>
+    <div class="picker-footer">
+      <span id="pickerCoordsReadout" class="muted">No point selected yet</span>
+      <button class="btn primary" id="usePickerLocation" disabled>Use this location</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <span id="toastMessage"></span>
+  <button id="toastUndoBtn" style="display:none;">Undo</button>
+</div>
 
 <script>
 (function(){
@@ -538,6 +857,9 @@
   let sortKey = 'updated';
   let sortDir = -1;
   let filterTypes = new Set();      // empty set = show all types
+  let selectedIds = new Set();      // bulk-selection state, survives re-renders
+  let lastGmailSync = null;         // ISO timestamp from the export script's "exported_at", if known
+  let filterCountries = new Set();  // empty set = show all countries
   let filterStatuses = new Set();   // empty set = show all statuses
   let dateFilters = {
     submitted: { from: '', to: '' },
@@ -556,10 +878,32 @@
   const emptyState = document.getElementById('emptyState');
   const toastEl = document.getElementById('toast');
 
+  let toastHideTimer = null;
+
   function toast(msg){
-    toastEl.textContent = msg;
+    clearTimeout(toastHideTimer);
+    document.getElementById('toastMessage').textContent = msg;
+    document.getElementById('toastUndoBtn').style.display = 'none';
     toastEl.classList.add('show');
-    setTimeout(()=>toastEl.classList.remove('show'), 1800);
+    toastHideTimer = setTimeout(()=>toastEl.classList.remove('show'), 1800);
+  }
+
+  // Destructive actions (delete, clear all) call this instead of toast() so
+  // there's a brief window to reverse them beyond just the confirmation
+  // dialog. undoFn is called once if the button is clicked; the toast stays
+  // up longer (6s) to give it a fair chance of being noticed.
+  function toastWithUndo(msg, undoFn){
+    clearTimeout(toastHideTimer);
+    document.getElementById('toastMessage').textContent = msg;
+    const undoBtn = document.getElementById('toastUndoBtn');
+    undoBtn.style.display = 'inline-block';
+    undoBtn.onclick = async ()=>{
+      clearTimeout(toastHideTimer);
+      toastEl.classList.remove('show');
+      await undoFn();
+    };
+    toastEl.classList.add('show');
+    toastHideTimer = setTimeout(()=>toastEl.classList.remove('show'), 6000);
   }
 
   function uid(){ return 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -573,15 +917,24 @@
     const q = document.getElementById('search').value.trim().toLowerCase();
     const includeLegacy = document.getElementById('includeLegacy').checked;
 
+    const proximityFlaggedIds = new Set();
+    findProximityPairs().forEach(p => { proximityFlaggedIds.add(p.a.id); proximityFlaggedIds.add(p.b.id); });
+
     let rows = submissions.filter(s=>{
-      const matchesQ = !q || s.portal.toLowerCase().includes(q) || (s.notes||'').toLowerCase().includes(q);
+      const matchesQ = !q
+        || s.portal.toLowerCase().includes(q)
+        || (s.notes||'').toLowerCase().includes(q)
+        || (s.submissionText||'').toLowerCase().includes(q)
+        || (s.supportingText||'').toLowerCase().includes(q)
+        || (s.editField||'').toLowerCase().includes(q);
       const type = s.type || 'Nomination';
       const matchesType = filterTypes.size===0 || filterTypes.has(type);
       const matchesStatus = filterStatuses.size===0 || filterStatuses.has(s.status);
       const matchesSubmitted = inDateRange(s.submitted, dateFilters.submitted);
       const matchesUpdated = inDateRange(s.updated, dateFilters.updated);
-      const matchesLegacy = includeLegacy || (s.source || 'Spatial') !== 'Wayfarer';
-      return matchesQ && matchesType && matchesStatus && matchesSubmitted && matchesUpdated && matchesLegacy;
+      const matchesLegacy = includeLegacy || (s.source || 'Spatial') === 'Spatial';
+      const matchesCountry = filterCountries.size===0 || filterCountries.has(s.country);
+      return matchesQ && matchesType && matchesStatus && matchesSubmitted && matchesUpdated && matchesLegacy && matchesCountry;
     });
 
     rows.sort((a,b)=>{
@@ -606,7 +959,8 @@
       const typeClass = type === 'Photo' ? 'photo' : (type === 'Edit' ? 'edit' : 'nomination');
       const typeLabel = type === 'Edit' && s.editField ? `Edit · ${s.editField}` : type;
       tr.innerHTML = `
-        <td class="portal-name" data-act="detail" data-id="${s.id}">${escapeHtml(s.portal)}${hasDetail ? '<span class="has-detail" title="Has photo/description">●</span>' : ''}</td>
+        <td><input type="checkbox" class="row-checkbox" data-id="${s.id}" ${selectedIds.has(s.id) ? 'checked' : ''}></td>
+        <td class="portal-name" data-act="detail" data-id="${s.id}">${escapeHtml(s.portal)}${hasDetail ? '<span class="has-detail" title="Has photo/description">●</span>' : ''}${proximityFlaggedIds.has(s.id) ? `<span class="proximity-flag" title="Within ${PROXIMITY_THRESHOLD_M}m of another nomination — possible duplicate, see Dashboard">⚠</span>` : ''}</td>
         <td><span class="type-badge ${typeClass}">${escapeHtml(typeLabel)}</span></td>
         <td>${s.submitted || '—'}</td>
         <td><span class="badge ${s.status} status-clickable" data-act="status" data-id="${s.id}" title="Click to change status">${s.status.toUpperCase()}</span></td>
@@ -620,6 +974,13 @@
       tbody.appendChild(tr);
     });
 
+    // Selections for rows no longer visible (deleted, or filtered out) stay
+    // in selectedIds -- only prune ones that no longer exist at all, so a
+    // temporary filter change doesn't silently lose a selection.
+    const allIds = new Set(submissions.map(s=>s.id));
+    selectedIds.forEach(id => { if(!allIds.has(id)) selectedIds.delete(id); });
+    updateBulkBar();
+
     document.getElementById('statTotal').textContent = submissions.length;
     document.getElementById('statPending').textContent = submissions.filter(s=>s.status==='Pending'||s.status==='Appeal').length;
     document.getElementById('statAccepted').textContent = submissions.filter(s=>s.status==='Accepted').length;
@@ -632,10 +993,13 @@
       const stored = res ? JSON.parse(res.value) : null;
       submissions = (stored && stored.submissions) ? stored.submissions : [];
       document.getElementById('includeLegacy').checked = stored && typeof stored.includeLegacy === 'boolean' ? stored.includeLegacy : true;
+      document.getElementById('showRadiusCircles').checked = stored && typeof stored.showRadiusCircles === 'boolean' ? stored.showRadiusCircles : false;
+      lastGmailSync = (stored && stored.lastGmailSync) || null;
     }catch(e){
       submissions = [];
     }
     render();
+    updateLastSyncIndicator();
   }
 
   // Accepts either the raw output of gmail_wayspot_export.py (snake_case
@@ -659,6 +1023,8 @@
       const supportingText = item.supporting_text ?? item.supportingText ?? '';
       const photoUrl = item.submission_photo_url ?? item.photoUrl ?? '';
       const supportingPhotoUrl = item.supporting_photo_url ?? item.supportingPhotoUrl ?? '';
+      const latitude = item.latitude ?? item.lat ?? '';
+      const longitude = item.longitude ?? item.lng ?? item.lon ?? '';
 
       const existing = submissions.find(s =>
         s.portal.toLowerCase() === portal.toLowerCase() &&
@@ -673,11 +1039,16 @@
         existing.supportingText = supportingText;
         existing.photoUrl = photoUrl;
         existing.supportingPhotoUrl = supportingPhotoUrl;
+        // Only overwrite coordinates if this import actually has them --
+        // don't blank out a manually-filled value with an empty re-import.
+        if(latitude) existing.latitude = latitude;
+        if(longitude) existing.longitude = longitude;
         existing.updated = now;
         updated++;
       }else{
         submissions.push({
           id: uid(), portal, submitted, status, type, source, editField, notes: '',
+          latitude, longitude,
           submissionText, supportingText, photoUrl, supportingPhotoUrl, updated: now
         });
         added++;
@@ -689,7 +1060,8 @@
   async function persist(){
     try{
       const includeLegacy = document.getElementById('includeLegacy').checked;
-      const payload = JSON.stringify({ submissions, includeLegacy });
+      const showRadiusCircles = document.getElementById('showRadiusCircles').checked;
+      const payload = JSON.stringify({ submissions, includeLegacy, showRadiusCircles, lastGmailSync });
       const result = await window.storage.set(STORAGE_KEY, payload, false);
       if(!result){
         console.error('Storage error: set returned no result');
@@ -710,6 +1082,8 @@
     document.getElementById('fType').value = existing ? (existing.type || 'Nomination') : 'Nomination';
     document.getElementById('fEditField').value = existing ? (existing.editField || '') : '';
     document.getElementById('fSubmitted').value = existing ? (existing.submitted||'') : todayISO();
+    document.getElementById('fLatitude').value = existing ? (existing.latitude||'') : '';
+    document.getElementById('fLongitude').value = existing ? (existing.longitude||'') : '';
     document.getElementById('fStatus').value = existing ? existing.status : 'Pending';
     document.getElementById('fNotes').value = existing ? (existing.notes||'') : '';
     editOverlay.classList.add('open');
@@ -721,20 +1095,1166 @@
     if(submissions.length === 0){ toast('Nothing to clear'); return; }
     const count = submissions.length;
     const confirmed = confirm(
-      `Delete all ${count} entries in this tracker? This also removes any manually attached photos. This cannot be undone.`
+      `Delete all ${count} entries in this tracker? This also removes any manually attached photos.`
     );
     if(!confirmed) return;
 
-    const photoIds = submissions.filter(s=>s.hasPhoto).map(s=>s.id);
-    for(const id of photoIds){
-      try{ await window.storage.delete('photo:' + id, false); }catch(e){ /* already gone or never existed */ }
+    const savedSubmissions = submissions;
+    const savedPhotos = {};
+    for(const s of savedSubmissions){
+      if(s.hasPhoto){
+        try{ const res = await window.storage.get('photo:' + s.id, false); if(res) savedPhotos[s.id] = res.value; }
+        catch(e){ /* couldn't read it -- undo just won't restore that one photo */ }
+      }
     }
 
     submissions = [];
     await persist();
     render();
-    toast(`Cleared ${count} entries`);
+    toastWithUndo(`Cleared ${count} entries`, async ()=>{
+      submissions = savedSubmissions;
+      for(const [id, dataUrl] of Object.entries(savedPhotos)){
+        try{ await window.storage.set('photo:' + id, dataUrl, false); }catch(e){}
+      }
+      await persist();
+      render();
+      toast(`Restored ${count} entries`);
+    });
   };
+
+  // ---- Map view ----
+  const STATUS_COLORS = {
+    Pending: '#ffb703',
+    Accepted: '#00e08a',
+    Rejected: '#ff5d5d',
+    Duplicate: '#6b8579',
+    Appeal: '#3ec6ff'
+  };
+
+  let leafletMap = null;
+  let markersLayer = null;
+  let circlesLayer = null;
+  const mapOverlay = document.getElementById('mapOverlay');
+
+  function statusMarkerIcon(status){
+    const color = STATUS_COLORS[status] || '#6b8579';
+    return L.divIcon({
+      className: '',
+      html: `<div class="marker-dot" style="background:${color};"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+      popupAnchor: [0, -8]
+    });
+  }
+
+  function openMapView(){
+    mapOverlay.classList.add('open');
+
+    if(!leafletMap){
+      leafletMap = L.map('mapContainer');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(leafletMap);
+      markersLayer = L.markerClusterGroup({
+        maxClusterRadius: 50,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false
+      }).addTo(leafletMap);
+      circlesLayer = L.layerGroup();
+      if(document.getElementById('showRadiusCircles').checked){
+        circlesLayer.addTo(leafletMap);
+      }
+    }
+
+    markersLayer.clearLayers();
+    circlesLayer.clearLayers();
+
+    const geotagged = submissions.filter(s=>{
+      const lat = parseFloat(s.latitude);
+      const lng = parseFloat(s.longitude);
+      return !isNaN(lat) && !isNaN(lng);
+    });
+
+    document.getElementById('mapSubtitle').textContent =
+      `Showing ${geotagged.length} of ${submissions.length} entries with coordinates`;
+
+    const existingEmpty = document.querySelector('.map-empty');
+    if(existingEmpty) existingEmpty.remove();
+    document.getElementById('mapContainer').style.display = geotagged.length ? 'block' : 'none';
+
+    if(geotagged.length === 0){
+      const empty = document.createElement('div');
+      empty.className = 'map-empty';
+      empty.innerHTML = submissions.length === 0
+        ? 'No entries yet — import your Gmail export or add one manually first.'
+        : 'None of your entries have coordinates yet.<br>Coordinates are auto-filled for legacy Wayfarer nominations, or you can add them by hand from any entry\'s detail view.';
+      document.querySelector('.map-panel').appendChild(empty);
+      return;
+    }
+
+    const latLngs = [];
+    geotagged.forEach(s=>{
+      const lat = parseFloat(s.latitude);
+      const lng = parseFloat(s.longitude);
+      const color = STATUS_COLORS[s.status] || '#6b8579';
+      latLngs.push([lat, lng]);
+
+      const marker = L.marker([lat, lng], { icon: statusMarkerIcon(s.status) });
+      const typeLabel = (s.type === 'Edit' && s.editField) ? `Edit · ${s.editField}` : (s.type || 'Nomination');
+      const gmapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`;
+      const intelUrl = `https://intel.ingress.com/intel?pll=${encodeURIComponent(lat)},${encodeURIComponent(lng)}&z=15`;
+      marker.bindPopup(`
+        <div class="map-popup-title">${escapeHtml(s.portal)}</div>
+        <div class="map-popup-meta">${escapeHtml(typeLabel)} — ${s.submitted || 'no date'} — ${escapeHtml(s.status)}</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <a class="map-popup-link" data-detail-id="${s.id}">View details</a>
+          <a class="map-popup-link" href="${gmapsUrl}" target="_blank" rel="noopener">Google Maps</a>
+          <a class="map-popup-link" href="${intelUrl}" target="_blank" rel="noopener">Ingress Intel</a>
+        </div>
+      `);
+      marker.addTo(markersLayer);
+
+      L.circle([lat, lng], {
+        radius: 20,
+        color: color,
+        weight: 1.5,
+        fillColor: color,
+        fillOpacity: 0.12,
+        interactive: false
+      }).addTo(circlesLayer);
+    });
+
+    setTimeout(()=>{
+      leafletMap.invalidateSize();
+      leafletMap.fitBounds(latLngs, { padding: [30, 30], maxZoom: 15 });
+    }, 50);
+  }
+
+  document.getElementById('btnMap').onclick = openMapView;
+  document.getElementById('closeMap').onclick = ()=>mapOverlay.classList.remove('open');
+  mapOverlay.addEventListener('click', e=>{ if(e.target===mapOverlay) mapOverlay.classList.remove('open'); });
+  document.getElementById('showRadiusCircles').addEventListener('change', async (e)=>{
+    if(!circlesLayer) return;
+    if(e.target.checked){
+      circlesLayer.addTo(leafletMap);
+    }else{
+      leafletMap.removeLayer(circlesLayer);
+    }
+    await persist();
+  });
+
+  // ---- Export map as a shareable image ----
+  // NOTE: this deliberately does NOT screenshot the live Leaflet map. The
+  // base tiles come from OpenStreetMap's standard tile server, loaded
+  // cross-origin, which doesn't reliably send CORS headers -- reading them
+  // back out of a canvas (toDataURL/toBlob) commonly throws a SecurityError
+  // ("tainted canvas") even though the map displays perfectly on screen.
+  // Instead this draws a simple custom plot: an equirectangular projection
+  // (latitude-corrected so regional shapes aren't stretched) of just your
+  // markers, styled to match the rest of the app. It's a schematic, not a
+  // real basemap, and is labeled as such.
+  function niceGridStep(range){
+    const steps = [0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1,2,5,10,20,45];
+    for(const s of steps){ if(range / s <= 6) return s; }
+    return steps[steps.length-1];
+  }
+
+  async function exportMapImage(){
+    const geotagged = submissions.filter(s=>{
+      const lat = parseFloat(s.latitude), lng = parseFloat(s.longitude);
+      return !isNaN(lat) && !isNaN(lng);
+    });
+    if(geotagged.length === 0){ toast('No entries have coordinates yet — nothing to export'); return; }
+
+    try{ await document.fonts.ready; }catch(e){ /* proceed anyway */ }
+
+    let lats = geotagged.map(s=>parseFloat(s.latitude));
+    let lngs = geotagged.map(s=>parseFloat(s.longitude));
+    let minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    let minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+
+    const EPS = 0.002; // guards against a degenerate zero-size box (single point, or all points identical)
+    let latRange = Math.max(maxLat - minLat, EPS);
+    let lngRange = Math.max(maxLng - minLng, EPS);
+    const latPad = latRange * 0.18, lngPad = lngRange * 0.18;
+    minLat -= latPad; maxLat += latPad; minLng -= lngPad; maxLng += lngPad;
+    latRange = maxLat - minLat; lngRange = maxLng - minLng;
+
+    const avgLatRad = ((minLat+maxLat)/2) * Math.PI/180;
+    const aspect = (lngRange * Math.cos(avgLatRad)) / latRange; // width:height of the geographic area
+
+    const W = 1080, PAD = 60;
+    const plotW = W - PAD*2;
+    const plotH = Math.max(280, Math.min(plotW / aspect, 900));
+
+    const headerH = 70 + 46 + 30 + 26; // top margin + eyebrow + title + subtitle/caption
+    const legendH = 40;
+    const footerH = 60;
+    const H = headerH + plotH + legendH + footerH;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#0a0e0c';
+    ctx.fillRect(0, 0, W, H);
+
+    let y = 70;
+    ctx.fillStyle = '#3ec6ff';
+    ctx.font = '600 15px "JetBrains Mono", monospace';
+    ctx.fillText('// CONTRIBUTION MAP', PAD, y);
+    y += 46;
+
+    ctx.fillStyle = '#d7f5e6';
+    ctx.font = '700 40px "JetBrains Mono", monospace';
+    ctx.fillText('My Wayspot Contributions', PAD, y);
+    y += 30;
+
+    ctx.fillStyle = '#6b8579';
+    ctx.font = '400 14px Inter, sans-serif';
+    ctx.fillText(`${geotagged.length} geotagged entr${geotagged.length===1?'y':'ies'} — schematic plot, not to map scale`, PAD, y);
+    y += 26;
+
+    const plotTop = y;
+    const plotLeft = PAD;
+
+    // Plot background + border
+    ctx.fillStyle = '#10160f';
+    ctx.fillRect(plotLeft, plotTop, plotW, plotH);
+    ctx.strokeStyle = '#223026';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(plotLeft, plotTop, plotW, plotH);
+
+    // Graticule (latitude/longitude gridlines with edge labels)
+    const latStep = niceGridStep(latRange);
+    const lngStep = niceGridStep(lngRange);
+    ctx.strokeStyle = '#1c2620';
+    ctx.fillStyle = '#4f6659';
+    ctx.font = '400 10px "JetBrains Mono", monospace';
+
+    for(let lng = Math.ceil(minLng/lngStep)*lngStep; lng <= maxLng; lng += lngStep){
+      const x = plotLeft + ((lng - minLng) / lngRange) * plotW;
+      ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, plotTop+plotH); ctx.stroke();
+      ctx.fillText(`${lng.toFixed(lngStep < 1 ? 2 : 0)}°`, x+3, plotTop+plotH-6);
+    }
+    for(let lat = Math.ceil(minLat/latStep)*latStep; lat <= maxLat; lat += latStep){
+      const py = plotTop + ((maxLat - lat) / latRange) * plotH;
+      ctx.beginPath(); ctx.moveTo(plotLeft, py); ctx.lineTo(plotLeft+plotW, py); ctx.stroke();
+      ctx.fillText(`${lat.toFixed(latStep < 1 ? 2 : 0)}°`, plotLeft+4, py-4);
+    }
+
+    // Points
+    geotagged.forEach(s=>{
+      const lat = parseFloat(s.latitude), lng = parseFloat(s.longitude);
+      const x = plotLeft + ((lng - minLng) / lngRange) * plotW;
+      const py = plotTop + ((maxLat - lat) / latRange) * plotH;
+      const color = STATUS_COLORS[s.status] || '#6b8579';
+      ctx.beginPath();
+      ctx.arc(x, py, 6, 0, Math.PI*2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = '#04140d';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    });
+
+    // Legend
+    y = plotTop + plotH + 30;
+    const legendItems = [
+      ['Pending', STATUS_COLORS.Pending], ['Accepted', STATUS_COLORS.Accepted],
+      ['Rejected', STATUS_COLORS.Rejected], ['Duplicate', STATUS_COLORS.Duplicate],
+      ['Appeal', STATUS_COLORS.Appeal]
+    ];
+    let lx = PAD;
+    ctx.font = '400 13px Inter, sans-serif';
+    legendItems.forEach(([label, color])=>{
+      ctx.beginPath(); ctx.arc(lx+6, y-4, 6, 0, Math.PI*2); ctx.fillStyle = color; ctx.fill();
+      ctx.fillStyle = '#d7f5e6';
+      ctx.fillText(label, lx+18, y);
+      lx += 18 + ctx.measureText(label).width + 24;
+    });
+
+    ctx.fillStyle = '#6b8579';
+    ctx.font = '400 12px "JetBrains Mono", monospace';
+    ctx.fillText('Generated with the Portal Submission Tracker', PAD, H-30);
+
+    canvas.toBlob(blob=>{
+      if(!blob){ toast('Image generation failed'); return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `portal-tracker-map-${todayISO()}.png`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url), 1000);
+      toast('Image downloaded');
+    }, 'image/png');
+  }
+
+  document.getElementById('btnExportMapImage').onclick = exportMapImage;
+
+  // Clicking "View details" inside a Leaflet popup: popups are rendered
+  // outside the normal DOM flow by Leaflet, so this listens at the document
+  // level instead of binding directly on each popup's link.
+  document.addEventListener('click', e=>{
+    const link = e.target.closest('.map-popup-link');
+    if(!link) return;
+    const s = submissions.find(x=>x.id===link.dataset.detailId);
+    if(!s) return;
+    mapOverlay.classList.remove('open');
+    openDetail(s);
+  });
+
+  // ---- Dashboard ----
+  const dashboardOverlay = document.getElementById('dashboardOverlay');
+
+  function daysBetween(fromISO, toISO){
+    if(!fromISO || !toISO) return null;
+    const from = new Date(fromISO);
+    const to = new Date(toISO);
+    if(isNaN(from) || isNaN(to)) return null;
+    return Math.round((to - from) / 86400000);
+  }
+
+  function formatRelativeTime(isoString){
+    const then = new Date(isoString);
+    if(isNaN(then)) return null;
+    const diffMs = Date.now() - then.getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if(mins < 1) return 'just now';
+    if(mins < 60) return `${mins} minute${mins===1?'':'s'} ago`;
+    const hours = Math.floor(mins / 60);
+    if(hours < 24) return `${hours} hour${hours===1?'':'s'} ago`;
+    const days = Math.floor(hours / 24);
+    if(days < 30) return `${days} day${days===1?'':'s'} ago`;
+    const months = Math.floor(days / 30);
+    if(months < 12) return `${months} month${months===1?'':'s'} ago`;
+    const years = Math.floor(months / 12);
+    return `${years} year${years===1?'':'s'} ago`;
+  }
+
+  function updateLastSyncIndicator(){
+    const el = document.getElementById('lastSyncIndicator');
+    if(!lastGmailSync){
+      el.textContent = 'Gmail data never imported — click Import JSON to load your export';
+      el.classList.remove('stale');
+      return;
+    }
+    const rel = formatRelativeTime(lastGmailSync);
+    el.textContent = `Gmail data last synced: ${rel || lastGmailSync}`;
+    const daysOld = daysBetween(lastGmailSync, new Date().toISOString());
+    el.classList.toggle('stale', daysOld !== null && daysOld > 30);
+  }
+
+  function dashBar(label, count, total, color){
+    const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+    return `
+      <div class="dash-bar-row">
+        <div class="dash-bar-label">${escapeHtml(label)}</div>
+        <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%; background:${color};"></div></div>
+        <div class="dash-bar-count">${count} (${pct}%)</div>
+      </div>
+    `;
+  }
+
+  const COUNTRY_CACHE_KEY = 'countryCache';
+
+  async function loadCountryCache(){
+    try{
+      const res = await window.storage.get(COUNTRY_CACHE_KEY, false);
+      return res ? JSON.parse(res.value) : {};
+    }catch(e){
+      return {};
+    }
+  }
+
+  async function saveCountryCache(cache){
+    try{ await window.storage.set(COUNTRY_CACHE_KEY, JSON.stringify(cache), false); }
+    catch(e){ /* non-fatal -- worst case it re-resolves next time */ }
+  }
+
+  async function reverseGeocodeCountry(lat, lng){
+    try{
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=3&addressdetails=1&accept-language=en`;
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if(!res.ok) return null;
+      const data = await res.json();
+      return (data.address && data.address.country) || null;
+    }catch(e){
+      return null;
+    }
+  }
+
+  // Populates the Countries section after the rest of the dashboard has
+  // already rendered, since resolving uncached coordinates means calling
+  // Nominatim's reverse-geocoding API -- throttled to ~1 request/second per
+  // their usage policy, so this can take a while the first time. Results
+  // are cached by rounded coordinate (~1km precision) so repeat opens, or
+  // nominations clustered in the same area, are instant after that.
+  // Shared by the Dashboard's Countries section and the table's Country
+  // filter: resolves every geotagged entry (any type, not just nominations)
+  // to a country, writes it onto s.country so it's available for
+  // synchronous filtering afterwards, and persists once at the end.
+  // onProgress(i, total) is called before each new lookup; returning false
+  // from it aborts early (e.g. if the UI that requested this got closed).
+  async function resolveCountriesForAllEntries(onProgress){
+    const geotagged = submissions
+      .map(s => ({ s, lat: parseFloat(s.latitude), lng: parseFloat(s.longitude) }))
+      .filter(x => !isNaN(x.lat) && !isNaN(x.lng));
+
+    if(geotagged.length === 0) return { geotagged: [] };
+
+    const roundKey = (lat, lng) => `${lat.toFixed(2)},${lng.toFixed(2)}`;
+    const cache = await loadCountryCache();
+    const uniqueKeys = [...new Set(geotagged.map(x => roundKey(x.lat, x.lng)))];
+    const uncached = uniqueKeys.filter(k => !(k in cache));
+
+    let cacheDirty = false;
+    for(let i=0; i<uncached.length; i++){
+      if(onProgress && onProgress(i, uncached.length) === false) return { geotagged, cancelled: true };
+      const key = uncached[i];
+      const [lat, lng] = key.split(',').map(Number);
+      const country = await reverseGeocodeCountry(lat, lng);
+      cache[key] = country || 'Unknown';
+      cacheDirty = true;
+      if(i < uncached.length - 1) await new Promise(r=>setTimeout(r, 1100));
+    }
+    if(cacheDirty) await saveCountryCache(cache);
+
+    let changed = false;
+    geotagged.forEach(x=>{
+      const country = cache[roundKey(x.lat, x.lng)] || 'Unknown';
+      if(x.s.country !== country){ x.s.country = country; changed = true; }
+    });
+    if(changed) await persist();
+
+    return { geotagged };
+  }
+
+  async function renderCountryBreakdown(){
+    const el = document.getElementById('dashCountries');
+    if(!el) return;
+
+    const totalEntries = submissions.length;
+    const hasAnyCoords = submissions.some(s=>{
+      const lat = parseFloat(s.latitude), lng = parseFloat(s.longitude);
+      return !isNaN(lat) && !isNaN(lng);
+    });
+
+    if(!hasAnyCoords){
+      el.innerHTML = `<p class="dash-empty">None of your entries have coordinates yet, so countries can't be determined. Coordinates are auto-filled for legacy Wayfarer nominations, or you can add them by hand.</p>`;
+      return;
+    }
+
+    const { geotagged, cancelled } = await resolveCountriesForAllEntries((i, total)=>{
+      el.innerHTML = `<p class="dash-empty">Resolving locations to countries… (${i+1}/${total})</p>`;
+      return dashboardOverlay.classList.contains('open');
+    });
+    if(cancelled || !dashboardOverlay.classList.contains('open')) return;
+
+    const countryCounts = {};
+    geotagged.forEach(x=>{
+      const country = x.s.country || 'Unknown';
+      countryCounts[country] = (countryCounts[country] || 0) + 1;
+    });
+    const sorted = Object.entries(countryCounts).sort((a,b)=>b[1]-a[1]);
+
+    el.innerHTML = `
+      <p class="dash-empty" style="margin-bottom:10px;">${geotagged.length} of ${totalEntries} entr${totalEntries===1?'y':'ies'} have coordinates and could be resolved.</p>
+      ${sorted.map(([country, count]) => dashBar(country, count, geotagged.length, '#00e08a')).join('')}
+    `;
+  }
+
+  const PROXIMITY_THRESHOLD_M = 20;
+
+  function haversineMeters(lat1, lng1, lat2, lng2){
+    const R = 6371000; // Earth's radius in meters
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  // Nominations only -- Photos/Edits reference an *existing* Wayspot, so
+  // "duplicate" doesn't apply to them the same way. O(n^2) pairwise check;
+  // fine for hundreds of entries, would need a spatial index at much larger
+  // scale.
+  function findProximityPairs(){
+    const geotagged = submissions
+      .filter(s => (s.type||'Nomination') === 'Nomination')
+      .map(s => ({ s, lat: parseFloat(s.latitude), lng: parseFloat(s.longitude) }))
+      .filter(x => !isNaN(x.lat) && !isNaN(x.lng));
+
+    const pairs = [];
+    for(let i=0; i<geotagged.length; i++){
+      for(let j=i+1; j<geotagged.length; j++){
+        const distance = haversineMeters(geotagged[i].lat, geotagged[i].lng, geotagged[j].lat, geotagged[j].lng);
+        if(distance <= PROXIMITY_THRESHOLD_M){
+          pairs.push({ a: geotagged[i].s, b: geotagged[j].s, distance });
+        }
+      }
+    }
+    return pairs.sort((x,y)=>x.distance - y.distance);
+  }
+
+  function computeDashboardStats(){
+    const total = submissions.length;
+
+    const counts = {};
+    STATUS_OPTIONS.forEach(st => counts[st] = submissions.filter(s=>s.status===st).length);
+
+    const decided = counts.Accepted + counts.Rejected;
+    const acceptanceRate = decided > 0 ? Math.round((counts.Accepted / decided) * 100) : null;
+
+    // Average days from submission to last update, for resolved entries.
+    // NOTE: this uses "last updated" as a proxy for "decided" -- the exact
+    // decision date isn't tracked separately, so a manual edit made well
+    // after the real decision would skew this. Good enough as an estimate.
+    const resolvedDurations = submissions
+      .filter(s => (s.status === 'Accepted' || s.status === 'Rejected') && s.submitted && s.updated)
+      .map(s => daysBetween(s.submitted, s.updated))
+      .filter(d => d !== null && d >= 0);
+    const avgDays = resolvedDurations.length
+      ? Math.round(resolvedDurations.reduce((a,b)=>a+b, 0) / resolvedDurations.length)
+      : null;
+
+    // Breakdown by type
+    const types = ['Nomination', 'Photo', 'Edit'];
+    const typeCounts = types.map(t => ({
+      label: t, count: submissions.filter(s => (s.type||'Nomination') === t).length
+    })).filter(t => t.count > 0);
+
+    // Breakdown by source, nominations only (the only type this distinction applies to)
+    const nominations = submissions.filter(s => (s.type||'Nomination') === 'Nomination');
+    const spatialCount = nominations.filter(s => (s.source||'Spatial') === 'Spatial').length;
+    const wayfarerCount = nominations.filter(s => s.source === 'Wayfarer').length;
+    const oprCount = nominations.filter(s => s.source === 'OPR').length;
+
+    // Timeline: one column per calendar month across the full date range,
+    // including zero-count months so gaps in activity are visible rather
+    // than silently skipped. Each bar is stacked by status.
+    const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const datedSubmissions = submissions.filter(s => s.submitted && !isNaN(new Date(s.submitted)));
+    let timelineMonths = [];
+    if(datedSubmissions.length > 0){
+      const monthKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const dates = datedSubmissions.map(s => new Date(s.submitted));
+      const minD = new Date(Math.min(...dates));
+      const maxD = new Date(Math.max(...dates));
+      const byMonth = {};
+      datedSubmissions.forEach(s=>{
+        const key = monthKey(new Date(s.submitted));
+        if(!byMonth[key]) byMonth[key] = { total: 0, byStatus: {} };
+        byMonth[key].total++;
+        byMonth[key].byStatus[s.status] = (byMonth[key].byStatus[s.status] || 0) + 1;
+      });
+      const cursor = new Date(minD.getFullYear(), minD.getMonth(), 1);
+      const end = new Date(maxD.getFullYear(), maxD.getMonth(), 1);
+      while(cursor <= end){
+        const key = monthKey(cursor);
+        const entry = byMonth[key] || { total: 0, byStatus: {} };
+        timelineMonths.push({
+          key, label: `${MONTH_LABELS[cursor.getMonth()]} '${String(cursor.getFullYear()).slice(2)}`,
+          total: entry.total, byStatus: entry.byStatus
+        });
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    }
+    const timelineMax = Math.max(1, ...timelineMonths.map(m => m.total));
+
+    // Needs review: entries the export script couldn't confidently match
+    // automatically (an appeal or decision it couldn't link to an original
+    // submission) get a note containing "review". This list clears itself
+    // naturally once you edit/resolve the note during actual review.
+    const needsReview = submissions.filter(s => s.notes && s.notes.toLowerCase().includes('review'));
+
+    // Defunct system: OPR (the original Ingress-only portal review) was
+    // fully retired -- a Pending nomination from it will never receive a
+    // decision. This is different from just being "stale": Wayfarer is
+    // still an active review system (just no longer linked to Ingress
+    // specifically), so Wayfarer-era Pending entries can still resolve and
+    // stay in the normal stale-pending bucket below.
+    const defunctPending = submissions.filter(s => s.status === 'Pending' && s.source === 'OPR');
+    const defunctIds = new Set(defunctPending.map(s=>s.id));
+
+    // Stale pending: threshold is 1.5x the average resolution time, with a
+    // sensible floor in case there's not enough history to base it on yet.
+    // Excludes OPR entries above, which are listed separately as defunct
+    // rather than merely old.
+    const today = todayISO();
+    const staleThreshold = Math.max(avgDays ? Math.round(avgDays * 1.5) : 45, 45);
+    const stalePending = submissions
+      .filter(s => s.status === 'Pending' && s.submitted && !defunctIds.has(s.id))
+      .map(s => ({ ...s, daysPending: daysBetween(s.submitted, today) }))
+      .filter(s => s.daysPending !== null && s.daysPending >= staleThreshold)
+      .sort((a,b) => b.daysPending - a.daysPending);
+
+    const proximityPairs = findProximityPairs();
+
+    return {
+      total, counts, decided, acceptanceRate, avgDays, typeCounts,
+      nominations, spatialCount, wayfarerCount, oprCount, timelineMonths, timelineMax,
+      needsReview, staleThreshold, stalePending, proximityPairs, defunctPending
+    };
+  }
+
+  function buildDashboard(){
+    const container = document.getElementById('dashboardContent');
+
+    if(submissions.length === 0){
+      container.innerHTML = `<p class="dash-empty">No entries yet — import your Gmail export or add one manually first.</p>`;
+      return;
+    }
+
+    const {
+      total, counts, acceptanceRate, avgDays, typeCounts,
+      nominations, spatialCount, wayfarerCount, oprCount, timelineMonths, timelineMax,
+      needsReview, staleThreshold, stalePending, proximityPairs, defunctPending
+    } = computeDashboardStats();
+    const stalePendingTop = stalePending.slice(0, 20);
+
+    container.innerHTML = `
+      <div class="dash-section">
+        <h3>Overview</h3>
+        <div class="dash-stat-grid">
+          <div class="dash-stat"><div class="num">${total}</div><div class="label">Total entries</div></div>
+          <div class="dash-stat"><div class="num" style="color:${STATUS_COLORS.Pending}">${counts.Pending}</div><div class="label">Pending</div></div>
+          <div class="dash-stat"><div class="num" style="color:${STATUS_COLORS.Accepted}">${counts.Accepted}</div><div class="label">Accepted</div></div>
+          <div class="dash-stat"><div class="num" style="color:${STATUS_COLORS.Rejected}">${counts.Rejected}</div><div class="label">Rejected</div></div>
+          <div class="dash-stat"><div class="num">${acceptanceRate !== null ? acceptanceRate + '%' : '—'}</div><div class="label">Acceptance rate</div></div>
+          <div class="dash-stat"><div class="num">${avgDays !== null ? avgDays : '—'}</div><div class="label">Avg. days to resolve*</div></div>
+        </div>
+        ${avgDays !== null ? '<p class="dash-empty" style="margin-top:8px;">*Estimated from last-updated date, since the exact decision date isn\'t tracked separately.</p>' : ''}
+      </div>
+
+      <div class="dash-section">
+        <h3>By type</h3>
+        ${typeCounts.map(t => dashBar(t.label, t.count, total, '#3ec6ff')).join('')}
+      </div>
+
+      ${timelineMonths.length ? `
+      <div class="dash-section">
+        <h3>Timeline — submissions per month</h3>
+        <div class="dash-timeline">
+          ${timelineMonths.map(m => `
+            <div class="timeline-col" title="${m.label}: ${m.total} submission${m.total===1?'':'s'}">
+              <div class="timeline-count">${m.total || ''}</div>
+              <div class="timeline-bar" style="height:${Math.round((m.total / timelineMax) * 120)}px;">
+                ${STATUS_OPTIONS.map(st => {
+                  const c = m.byStatus[st] || 0;
+                  if(c === 0) return '';
+                  const segHeight = Math.round((c / timelineMax) * 120);
+                  return `<div class="timeline-seg" style="height:${segHeight}px; background:${STATUS_COLORS[st]};"></div>`;
+                }).join('')}
+              </div>
+              <div class="timeline-label">${m.label}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>` : ''}
+
+      ${nominations.length ? `
+      <div class="dash-section">
+        <h3>Nominations by source</h3>
+        ${dashBar('Spatial (current)', spatialCount, nominations.length, '#00e08a')}
+        ${wayfarerCount ? dashBar('Wayfarer (legacy)', wayfarerCount, nominations.length, '#6b8579') : ''}
+        ${oprCount ? dashBar('OPR (legacy)', oprCount, nominations.length, '#4f6659') : ''}
+      </div>` : ''}
+
+      ${nominations.length ? `
+      <div class="dash-section">
+        <h3>Countries</h3>
+        <div id="dashCountries"><p class="dash-empty">Loading…</p></div>
+      </div>` : ''}
+
+      <div class="dash-section">
+        <h3>Possible duplicates ${proximityPairs.length ? `(${proximityPairs.length}, within ${PROXIMITY_THRESHOLD_M}m)` : ''}</h3>
+        ${proximityPairs.length ? `
+          <table class="dash-stale-table">
+            <thead><tr><th>Portal A</th><th>Portal B</th><th>Distance</th></tr></thead>
+            <tbody>
+              ${proximityPairs.map(p => `
+                <tr>
+                  <td><a class="dup-link" data-detail-id="${p.a.id}">${escapeHtml(p.a.portal)}</a> <span style="color:var(--text-muted); font-size:11px;">(${p.a.submitted||'—'})</span></td>
+                  <td><a class="dup-link" data-detail-id="${p.b.id}">${escapeHtml(p.b.portal)}</a> <span style="color:var(--text-muted); font-size:11px;">(${p.b.submitted||'—'})</span></td>
+                  <td>${Math.round(p.distance)}m</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : `<p class="dash-empty">No nominations found within ${PROXIMITY_THRESHOLD_M}m of each other. ✓</p>`}
+      </div>
+
+      <div class="dash-section">
+        <h3>Needs review ${needsReview.length ? `(${needsReview.length})` : ''}</h3>
+        ${needsReview.length ? `
+          <table class="dash-stale-table">
+            <thead><tr><th>Portal</th><th>Type</th><th>Status</th><th>Submitted</th><th>Note</th></tr></thead>
+            <tbody>
+              ${needsReview.map(s => `
+                <tr data-detail-id="${s.id}">
+                  <td>${escapeHtml(s.portal)}</td>
+                  <td>${escapeHtml((s.type==='Edit' && s.editField) ? `Edit · ${s.editField}` : (s.type||'Nomination'))}</td>
+                  <td><span class="badge ${s.status}">${escapeHtml(s.status.toUpperCase())}</span></td>
+                  <td>${s.submitted || '—'}</td>
+                  <td style="color:var(--text-muted); font-size:12px;">${escapeHtml(s.notes)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : `<p class="dash-empty">Nothing flagged — every appeal and decision was matched automatically. ✓</p>`}
+      </div>
+
+      <div class="dash-section">
+        <h3>Defunct system ${defunctPending.length ? `(${defunctPending.length})` : ''}</h3>
+        ${defunctPending.length ? `
+          <p class="dash-empty" style="margin-bottom:8px;">OPR (the original Ingress portal review system) was fully retired — these will never receive a decision. Consider updating their status by hand, or resubmitting under the current system if you still want the location added.</p>
+          <table class="dash-stale-table">
+            <thead><tr><th>Portal</th><th>Submitted</th></tr></thead>
+            <tbody>
+              ${defunctPending.map(s => `
+                <tr data-detail-id="${s.id}">
+                  <td>${escapeHtml(s.portal)}</td>
+                  <td>${s.submitted || '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : `<p class="dash-empty">No Pending nominations stuck in the retired OPR system. ✓</p>`}
+      </div>
+
+      <div class="dash-section">
+        <h3>Stale pending ${stalePending.length ? `(${stalePending.length}, pending ${staleThreshold}+ days)` : ''}</h3>
+        ${stalePending.length ? `
+          <table class="dash-stale-table">
+            <thead><tr><th>Portal</th><th>Type</th><th>Submitted</th><th>Days pending</th></tr></thead>
+            <tbody>
+              ${stalePendingTop.map(s => `
+                <tr data-detail-id="${s.id}">
+                  <td>${escapeHtml(s.portal)}</td>
+                  <td>${escapeHtml((s.type==='Edit' && s.editField) ? `Edit · ${s.editField}` : (s.type||'Nomination'))}</td>
+                  <td>${s.submitted}</td>
+                  <td>${s.daysPending}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : `<p class="dash-empty">Nothing unusually old — every Pending entry is within ${staleThreshold} days${avgDays !== null ? ` (1.5&times; your average of ${avgDays} days)` : ''}.</p>`}
+      </div>
+    `;
+
+    container.querySelectorAll('.dash-stale-table tr[data-detail-id]').forEach(row=>{
+      row.addEventListener('click', ()=>{
+        const s = submissions.find(x=>x.id===row.dataset.detailId);
+        if(!s) return;
+        dashboardOverlay.classList.remove('open');
+        openDetail(s);
+      });
+    });
+    container.querySelectorAll('.dup-link').forEach(link=>{
+      link.addEventListener('click', ()=>{
+        const s = submissions.find(x=>x.id===link.dataset.detailId);
+        if(!s) return;
+        dashboardOverlay.classList.remove('open');
+        openDetail(s);
+      });
+    });
+  }
+
+  document.getElementById('btnDashboard').onclick = ()=>{
+    dashboardOverlay.classList.add('open');
+    buildDashboard();
+    renderCountryBreakdown();
+  };
+  document.getElementById('closeDashboard').onclick = ()=>dashboardOverlay.classList.remove('open');
+  dashboardOverlay.addEventListener('click', e=>{ if(e.target===dashboardOverlay) dashboardOverlay.classList.remove('open'); });
+
+  // ---- Export dashboard as a shareable infographic (PNG via Canvas) ----
+  function drawRoundedRect(ctx, x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+
+  async function exportDashboardImage(){
+    if(submissions.length === 0){ toast('Nothing to export yet'); return; }
+    toast('Generating image…');
+
+    // Make sure the web fonts are actually loaded before Canvas draws text
+    // with them -- otherwise it silently falls back to a default font.
+    try{ await document.fonts.ready; }catch(e){ /* proceed anyway */ }
+
+    const stats = computeDashboardStats();
+
+    // Countries: use whatever's already cached from a previous dashboard
+    // open. This does NOT trigger new geocoding lookups (that's throttled
+    // and can take a while) -- if nothing's cached yet, this section is
+    // simply omitted rather than blocking the export on live API calls.
+    const countryCache = await loadCountryCache();
+    const roundKey = (lat, lng) => `${lat.toFixed(2)},${lng.toFixed(2)}`;
+    const geotaggedNoms = stats.nominations
+      .map(s => ({ lat: parseFloat(s.latitude), lng: parseFloat(s.longitude) }))
+      .filter(x => !isNaN(x.lat) && !isNaN(x.lng));
+    const countryCounts = {};
+    geotaggedNoms.forEach(x=>{
+      const key = roundKey(x.lat, x.lng);
+      if(key in countryCache){
+        const c = countryCache[key];
+        countryCounts[c] = (countryCounts[c]||0)+1;
+      }
+    });
+    const topCountries = Object.entries(countryCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+    const STATUS_COLORS_HEX = { Pending:'#ffb703', Accepted:'#00e08a', Rejected:'#ff5d5d', Duplicate:'#6b8579', Appeal:'#3ec6ff' };
+
+    // ---- Layout: compute exact required height first, so nothing gets
+    // clipped and there's no wasted blank space at the bottom. ----
+    const W = 1080, PAD = 60;
+    const rowH = 34;
+    let H = 70 + 46 + 30 + 50;         // top margin + eyebrow + title + subtitle
+    H += 110 + 60;                      // stat cards + margin
+    H += 24 + stats.typeCounts.length * rowH + 24; // "By type"
+    if(topCountries.length) H += 24 + topCountries.length * rowH + 24; // "Top countries"
+    const hasTimeline = stats.timelineMonths.length > 0;
+    if(hasTimeline) H += 20 + 140 + 50; // "Timeline"
+    H += 40; // footer
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#0a0e0c';
+    ctx.fillRect(0, 0, W, H);
+
+    let y = 70;
+
+    ctx.fillStyle = '#3ec6ff';
+    ctx.font = '600 15px "JetBrains Mono", monospace';
+    ctx.fillText('// PORTAL SUBMISSION SUMMARY', PAD, y);
+    y += 46;
+
+    ctx.fillStyle = '#d7f5e6';
+    ctx.font = '700 40px "JetBrains Mono", monospace';
+    ctx.fillText('My Wayspot Contributions', PAD, y);
+    y += 30;
+
+    ctx.fillStyle = '#6b8579';
+    ctx.font = '400 16px Inter, sans-serif';
+    ctx.fillText(`Generated ${new Date().toLocaleDateString(undefined, {year:'numeric', month:'long', day:'numeric'})}`, PAD, y);
+    y += 50;
+
+    // Stat cards
+    const cardData = [
+      { label: 'TOTAL', value: String(stats.total), color: '#d7f5e6' },
+      { label: 'PENDING', value: String(stats.counts.Pending), color: STATUS_COLORS_HEX.Pending },
+      { label: 'ACCEPTED', value: String(stats.counts.Accepted), color: STATUS_COLORS_HEX.Accepted },
+      { label: 'REJECTED', value: String(stats.counts.Rejected), color: STATUS_COLORS_HEX.Rejected },
+      { label: 'ACCEPT RATE', value: stats.acceptanceRate !== null ? stats.acceptanceRate + '%' : '—', color: '#d7f5e6' },
+    ];
+    const cardGap = 16;
+    const cardW = (W - PAD*2 - cardGap*4) / 5;
+    const cardH = 110;
+    cardData.forEach((c, i)=>{
+      const x = PAD + i*(cardW+cardGap);
+      ctx.fillStyle = '#161d19';
+      drawRoundedRect(ctx, x, y, cardW, cardH, 8); ctx.fill();
+      ctx.strokeStyle = '#223026'; ctx.lineWidth = 1;
+      drawRoundedRect(ctx, x, y, cardW, cardH, 8); ctx.stroke();
+      ctx.fillStyle = c.color;
+      ctx.font = '700 28px "JetBrains Mono", monospace';
+      ctx.fillText(c.value, x+16, y+50);
+      ctx.fillStyle = '#6b8579';
+      ctx.font = '600 10.5px "JetBrains Mono", monospace';
+      ctx.fillText(c.label, x+16, y+76);
+    });
+    y += cardH + 60;
+
+    // Shared bar-row drawer for the "By type" / "Top countries" sections
+    const labelColW = 190;
+    const countColW = 70;
+    const barW = W - PAD*2 - labelColW - countColW;
+    function drawBarRow(label, count, fraction, color){
+      ctx.fillStyle = '#d7f5e6';
+      ctx.font = '400 15px Inter, sans-serif';
+      ctx.fillText(label.length > 24 ? label.slice(0,23)+'…' : label, PAD, y+14);
+      ctx.fillStyle = '#161d19';
+      ctx.fillRect(PAD+labelColW, y, barW, 18);
+      ctx.fillStyle = color;
+      ctx.fillRect(PAD+labelColW, y, Math.max(2, barW*fraction), 18);
+      ctx.fillStyle = '#6b8579';
+      ctx.font = '500 12px "JetBrains Mono", monospace';
+      ctx.fillText(String(count), PAD+labelColW+barW+12, y+14);
+      y += rowH;
+    }
+
+    ctx.fillStyle = '#6b8579';
+    ctx.font = '600 13px "JetBrains Mono", monospace';
+    ctx.fillText('BY TYPE', PAD, y);
+    y += 24;
+    stats.typeCounts.forEach(t => drawBarRow(t.label, t.count, stats.total > 0 ? t.count/stats.total : 0, '#3ec6ff'));
+    y += 24;
+
+    if(topCountries.length){
+      ctx.fillStyle = '#6b8579';
+      ctx.font = '600 13px "JetBrains Mono", monospace';
+      ctx.fillText('TOP COUNTRIES', PAD, y);
+      y += 24;
+      const maxC = topCountries[0][1];
+      topCountries.forEach(([name, count]) => drawBarRow(name, count, count/maxC, '#00e08a'));
+      y += 24;
+    }
+
+    if(hasTimeline){
+      ctx.fillStyle = '#6b8579';
+      ctx.font = '600 13px "JetBrains Mono", monospace';
+      ctx.fillText('TIMELINE', PAD, y);
+      y += 20;
+
+      const chartH = 140;
+      const chartTop = y;
+      const months = stats.timelineMonths;
+      const innerW = W - PAD*2;
+      const colW = Math.max(4, innerW/months.length - 3);
+      const step = innerW / months.length;
+
+      months.forEach((m, i)=>{
+        const x = PAD + i*step;
+        let curY = chartTop + chartH;
+        STATUS_OPTIONS.forEach(st=>{
+          const c = m.byStatus[st] || 0;
+          if(c === 0) return;
+          const segH = (c/stats.timelineMax) * chartH;
+          curY -= segH;
+          ctx.fillStyle = STATUS_COLORS_HEX[st];
+          ctx.fillRect(x, curY, colW, segH);
+        });
+      });
+
+      ctx.strokeStyle = '#223026';
+      ctx.beginPath();
+      ctx.moveTo(PAD, chartTop+chartH);
+      ctx.lineTo(W-PAD, chartTop+chartH);
+      ctx.stroke();
+
+      ctx.fillStyle = '#6b8579';
+      ctx.font = '500 11px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(months[0].label, PAD, chartTop+chartH+22);
+      ctx.textAlign = 'right';
+      ctx.fillText(months[months.length-1].label, W-PAD, chartTop+chartH+22);
+      ctx.textAlign = 'left';
+
+      y = chartTop + chartH + 50;
+    }
+
+    ctx.fillStyle = '#6b8579';
+    ctx.font = '400 12px "JetBrains Mono", monospace';
+    ctx.fillText('Generated with the Portal Submission Tracker', PAD, H-30);
+
+    canvas.toBlob(blob=>{
+      if(!blob){ toast('Image generation failed'); return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `portal-tracker-summary-${todayISO()}.png`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url), 1000);
+      toast('Image downloaded');
+    }, 'image/png');
+  }
+
+  document.getElementById('btnExportInfographic').onclick = exportDashboardImage;
+
+  // ---- Coordinate picker (click-a-point map, used by both the Add/Edit
+  // form and the Detail view) ----
+  const pickerOverlay = document.getElementById('pickerOverlay');
+  let pickerMap = null;
+  let pickerMarker = null;
+  let pendingLatLng = null;
+  let pickerTargetInputs = null; // { lat: <el>, lng: <el> }, set on open
+
+  function averageOfKnownCoordinates(){
+    const points = submissions
+      .map(s => [parseFloat(s.latitude), parseFloat(s.longitude)])
+      .filter(([lat, lng]) => !isNaN(lat) && !isNaN(lng));
+    if(!points.length) return null;
+    const avgLat = points.reduce((a,p)=>a+p[0], 0) / points.length;
+    const avgLng = points.reduce((a,p)=>a+p[1], 0) / points.length;
+    return [avgLat, avgLng];
+  }
+
+  function pickerDivIcon(){
+    return L.divIcon({
+      className: '', html: '<div class="picker-marker"></div>',
+      iconSize: [18, 18], iconAnchor: [9, 18], popupAnchor: [0, -18]
+    });
+  }
+
+  function setPickerMarker(lat, lng){
+    pendingLatLng = [lat, lng];
+    if(pickerMarker){
+      pickerMarker.setLatLng([lat, lng]);
+    }else{
+      pickerMarker = L.marker([lat, lng], { icon: pickerDivIcon() }).addTo(pickerMap);
+    }
+    document.getElementById('pickerCoordsReadout').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    document.getElementById('usePickerLocation').disabled = false;
+  }
+
+  function openCoordinatePicker(latInput, lngInput){
+    pickerTargetInputs = { lat: latInput, lng: lngInput };
+    pickerOverlay.classList.add('open');
+
+    const existingLat = parseFloat(latInput.value);
+    const existingLng = parseFloat(lngInput.value);
+    const hasExisting = !isNaN(existingLat) && !isNaN(existingLng);
+
+    if(!pickerMap){
+      pickerMap = L.map('pickerMapContainer');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(pickerMap);
+      pickerMap.on('click', e=>setPickerMarker(e.latlng.lat, e.latlng.lng));
+    }
+
+    // Reset marker/readout state for this open, then decide the starting view.
+    if(pickerMarker){ pickerMap.removeLayer(pickerMarker); pickerMarker = null; }
+    pendingLatLng = null;
+    document.getElementById('usePickerLocation').disabled = true;
+
+    let center, zoom;
+    if(hasExisting){
+      center = [existingLat, existingLng];
+      zoom = 15;
+    }else{
+      const avg = averageOfKnownCoordinates();
+      center = avg || [20, 0];
+      zoom = avg ? 8 : 2;
+    }
+
+    setTimeout(()=>{
+      pickerMap.invalidateSize();
+      pickerMap.setView(center, zoom);
+      if(hasExisting){
+        setPickerMarker(existingLat, existingLng);
+      }else{
+        document.getElementById('pickerCoordsReadout').textContent = 'No point selected yet';
+      }
+    }, 50);
+  }
+
+  document.getElementById('fPickOnMap').addEventListener('click', ()=>{
+    openCoordinatePicker(document.getElementById('fLatitude'), document.getElementById('fLongitude'));
+  });
+  document.getElementById('detailPickOnMap').addEventListener('click', ()=>{
+    openCoordinatePicker(document.getElementById('detailLatitude'), document.getElementById('detailLongitude'));
+  });
+
+  document.getElementById('closePicker').onclick = ()=>pickerOverlay.classList.remove('open');
+  document.getElementById('usePickerLocation').onclick = ()=>{
+    if(!pendingLatLng || !pickerTargetInputs) return;
+    pickerTargetInputs.lat.value = pendingLatLng[0].toFixed(6);
+    pickerTargetInputs.lng.value = pendingLatLng[1].toFixed(6);
+    // If this was opened from the Detail view, refresh its map/Intel links live.
+    if(pickerTargetInputs.lat.id === 'detailLatitude' && typeof updateMapLink === 'function'){
+      updateMapLink();
+    }
+    pickerOverlay.classList.remove('open');
+  };
+
+  // ---- Photo gallery ----
+  const galleryOverlay = document.getElementById('galleryOverlay');
+  let galleryItemsCache = null;
+
+  async function buildGalleryItems(){
+    const items = [];
+    for(const s of submissions){
+      const typeLabel = (s.type === 'Edit' && s.editField) ? `Edit · ${s.editField}` : (s.type || 'Nomination');
+      if(s.photoUrl){
+        items.push({ src: s.photoUrl, portal: s.portal, typeLabel, status: s.status, entryId: s.id, source: 'Submission' });
+      }
+      if(s.supportingPhotoUrl){
+        items.push({ src: s.supportingPhotoUrl, portal: s.portal, typeLabel, status: s.status, entryId: s.id, source: 'Supporting' });
+      }
+      if(s.hasPhoto){
+        try{
+          const res = await window.storage.get('photo:' + s.id, false);
+          if(res) items.push({ src: res.value, portal: s.portal, typeLabel, status: s.status, entryId: s.id, source: 'Manual' });
+        }catch(e){ /* skip if unreadable */ }
+      }
+    }
+    return items;
+  }
+
+  function renderGallery(items, query){
+    const q = (query || '').trim().toLowerCase();
+    const filtered = q ? items.filter(it => it.portal.toLowerCase().includes(q)) : items;
+    const content = document.getElementById('galleryContent');
+
+    document.getElementById('gallerySubtitle').textContent =
+      q ? `Showing ${filtered.length} of ${items.length} photos` : `${items.length} photo${items.length===1?'':'s'} across all entries`;
+
+    if(filtered.length === 0){
+      content.innerHTML = `<div class="gallery-empty">${items.length===0
+        ? 'No photos yet — Gmail-sourced photos appear automatically, or attach one from any entry\'s detail view.'
+        : 'No photos match that search.'}</div>`;
+      return;
+    }
+
+    content.innerHTML = filtered.map((it, i) => `
+      <div class="gallery-tile">
+        <img src="${it.src}" alt="${escapeHtml(it.portal)}" data-gallery-index="${i}">
+        <div class="gallery-caption">
+          <div class="gallery-portal" title="${escapeHtml(it.portal)}">${escapeHtml(it.portal)}</div>
+          <div class="gallery-meta">
+            <span>${escapeHtml(it.source)}</span>
+            <a class="gallery-view-link" data-detail-id="${it.entryId}">View entry</a>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    content.querySelectorAll('img[data-gallery-index]').forEach(img=>{
+      img.addEventListener('click', ()=>{
+        lightboxImg.src = filtered[parseInt(img.dataset.galleryIndex, 10)].src;
+        lightbox.classList.add('open');
+      });
+    });
+    content.querySelectorAll('.gallery-view-link').forEach(link=>{
+      link.addEventListener('click', ()=>{
+        const s = submissions.find(x=>x.id===link.dataset.detailId);
+        if(!s) return;
+        galleryOverlay.classList.remove('open');
+        openDetail(s);
+      });
+    });
+  }
+
+  document.getElementById('btnGallery').onclick = async ()=>{
+    galleryOverlay.classList.add('open');
+    document.getElementById('gallerySearch').value = '';
+    document.getElementById('gallerySubtitle').textContent = 'Loading photos…';
+    document.getElementById('galleryContent').innerHTML = '';
+    galleryItemsCache = await buildGalleryItems();
+    renderGallery(galleryItemsCache, '');
+  };
+  document.getElementById('closeGallery').onclick = ()=>galleryOverlay.classList.remove('open');
+  galleryOverlay.addEventListener('click', e=>{ if(e.target===galleryOverlay) galleryOverlay.classList.remove('open'); });
+  document.getElementById('gallerySearch').addEventListener('input', e=>{
+    if(galleryItemsCache) renderGallery(galleryItemsCache, e.target.value);
+  });
 
   // ---- Import from gmail_wayspot_export.py output ----
   const importInput = document.getElementById('importInput');
@@ -745,14 +2265,25 @@
     if(!file) return;
     try{
       const text = await file.text();
-      const items = JSON.parse(text);
-      if(!Array.isArray(items)){
-        toast("That file doesn't look like a submissions export (expected a JSON array)");
+      const parsed = JSON.parse(text);
+      // Current export format wraps the array with a sync timestamp:
+      // { exported_at, submissions: [...] }. Older exports (or a
+      // hand-crafted file) may just be the bare array -- still accepted.
+      let items, exportedAt = null;
+      if(Array.isArray(parsed)){
+        items = parsed;
+      }else if(parsed && Array.isArray(parsed.submissions)){
+        items = parsed.submissions;
+        exportedAt = parsed.exported_at || null;
+      }else{
+        toast("That file doesn't look like a submissions export (expected a JSON array, or an object with a \"submissions\" array)");
         return;
       }
       const { added, updated, skipped } = importSubmissions(items);
+      if(exportedAt) lastGmailSync = exportedAt;
       await persist();
       render();
+      updateLastSyncIndicator();
       let msg = `Imported: ${added} new, ${updated} updated`;
       if(skipped) msg += `, ${skipped} skipped`;
       toast(msg);
@@ -772,6 +2303,8 @@
       type: document.getElementById('fType').value,
       editField: document.getElementById('fEditField').value.trim(),
       submitted: document.getElementById('fSubmitted').value,
+      latitude: document.getElementById('fLatitude').value.trim(),
+      longitude: document.getElementById('fLongitude').value.trim(),
       status: document.getElementById('fStatus').value,
       notes: document.getElementById('fNotes').value.trim(),
       updated: todayISO()
@@ -789,7 +2322,7 @@
     toast(editingId ? 'Submission updated' : 'Submission added');
   };
 
-  tbody.addEventListener('click', e=>{
+  tbody.addEventListener('click', async e=>{
     const target = e.target.closest('button, td[data-act], span[data-act]');
     if(!target) return;
     const id = target.dataset.id;
@@ -799,12 +2332,23 @@
       openEdit(s);
     }else if(target.dataset.act==='del'){
       if(confirm(`Delete "${s.portal}"?`)){
+        let savedPhoto = null;
         if(s.hasPhoto){
-          window.storage.delete('photo:' + s.id, false).catch(()=>{});
+          try{ const res = await window.storage.get('photo:' + s.id, false); savedPhoto = res ? res.value : null; }
+          catch(e){ /* couldn't read it -- undo just won't restore the photo */ }
         }
         submissions = submissions.filter(x=>x.id!==id);
-        persist().then(render);
-        toast('Deleted');
+        await persist();
+        render();
+        toastWithUndo(`Deleted "${s.portal}"`, async ()=>{
+          submissions.push(s);
+          if(savedPhoto){
+            try{ await window.storage.set('photo:' + s.id, savedPhoto, false); }catch(e){}
+          }
+          await persist();
+          render();
+          toast('Restored');
+        });
       }
     }else if(target.dataset.act==='detail'){
       openDetail(s);
@@ -813,6 +2357,115 @@
       openStatusQuickPopover(s, target);
     }
   });
+
+  // ---- Bulk select ----
+  function updateBulkBar(){
+    const bulkBar = document.getElementById('bulkBar');
+    const count = selectedIds.size;
+    document.getElementById('bulkCount').textContent = `${count} selected`;
+    bulkBar.classList.toggle('show', count > 0);
+
+    const visibleCheckboxes = [...tbody.querySelectorAll('.row-checkbox')];
+    const selectAllCb = document.getElementById('selectAllCheckbox');
+    if(visibleCheckboxes.length === 0){
+      selectAllCb.checked = false;
+      selectAllCb.indeterminate = false;
+    }else{
+      const visibleSelectedCount = visibleCheckboxes.filter(cb => selectedIds.has(cb.dataset.id)).length;
+      selectAllCb.checked = visibleSelectedCount === visibleCheckboxes.length;
+      selectAllCb.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < visibleCheckboxes.length;
+    }
+  }
+
+  tbody.addEventListener('change', e=>{
+    const cb = e.target.closest('.row-checkbox');
+    if(!cb) return;
+    if(cb.checked) selectedIds.add(cb.dataset.id);
+    else selectedIds.delete(cb.dataset.id);
+    updateBulkBar();
+  });
+
+  document.getElementById('selectAllCheckbox').addEventListener('change', e=>{
+    const visibleCheckboxes = [...tbody.querySelectorAll('.row-checkbox')];
+    visibleCheckboxes.forEach(cb=>{
+      if(e.target.checked) selectedIds.add(cb.dataset.id);
+      else selectedIds.delete(cb.dataset.id);
+    });
+    render();
+  });
+
+  document.getElementById('bulkExportCsv').onclick = ()=>{
+    const selected = submissions.filter(s => selectedIds.has(s.id));
+    exportToCSV(selected, `portal-submissions-selected-${todayISO()}.csv`);
+  };
+
+  document.getElementById('bulkClear').onclick = ()=>{
+    selectedIds.clear();
+    render();
+  };
+
+  document.getElementById('bulkDelete').onclick = async ()=>{
+    const count = selectedIds.size;
+    if(count === 0) return;
+    const confirmed = confirm(`Delete ${count} selected entr${count===1?'y':'ies'}? This also removes any manually attached photos.`);
+    if(!confirmed) return;
+
+    const toDelete = submissions.filter(s => selectedIds.has(s.id));
+    const savedPhotos = {};
+    for(const s of toDelete){
+      if(s.hasPhoto){
+        try{ const res = await window.storage.get('photo:' + s.id, false); if(res) savedPhotos[s.id] = res.value; }
+        catch(e){ /* couldn't read it -- undo just won't restore that one photo */ }
+      }
+    }
+    submissions = submissions.filter(s => !selectedIds.has(s.id));
+    selectedIds.clear();
+    await persist();
+    render();
+    toastWithUndo(`Deleted ${count} entries`, async ()=>{
+      submissions.push(...toDelete);
+      for(const [id, dataUrl] of Object.entries(savedPhotos)){
+        try{ await window.storage.set('photo:' + id, dataUrl, false); }catch(e){}
+      }
+      await persist();
+      render();
+      toast(`Restored ${toDelete.length} entries`);
+    });
+  };
+
+  document.getElementById('bulkChangeStatus').onclick = (e)=>{
+    if(selectedIds.size === 0) return;
+    filterPopover.dataset.column = 'bulkstatus';
+    filterPopover.innerHTML = `
+      <div class="filter-popover-title">Set status for ${selectedIds.size} selected</div>
+      ${STATUS_OPTIONS.map(v => `
+        <label class="filter-check">
+          <input type="radio" name="bulkStatus" value="${escapeHtml(v)}">
+          <span class="badge ${v}" style="pointer-events:none;">${v.toUpperCase()}</span>
+        </label>
+      `).join('')}
+    `;
+    filterPopover.querySelectorAll('input[name=bulkStatus]').forEach(radio=>{
+      radio.addEventListener('change', async ()=>{
+        const now = todayISO();
+        submissions.forEach(s=>{
+          if(selectedIds.has(s.id)){
+            s.status = radio.value;
+            s.updated = now;
+          }
+        });
+        await persist();
+        closeFilterPopover();
+        render();
+        toast(`Set ${selectedIds.size} entries to ${radio.value}`);
+      });
+    });
+
+    const rect = e.target.getBoundingClientRect();
+    filterPopover.style.top = (rect.bottom + 6) + 'px';
+    filterPopover.style.left = rect.left + 'px';
+    filterPopover.classList.add('open');
+  };
 
   // ---- Submission detail modal (photo + description) ----
   const detailOverlay = document.getElementById('detailOverlay');
@@ -845,6 +2498,9 @@
     document.getElementById('detailSub').textContent = `${typeLabel} — ${s.submitted || 'No date'} — ${s.status}`;
     document.getElementById('detailDescription').value = s.submissionText || '';
     document.getElementById('detailSupportingText').value = s.supportingText || '';
+    document.getElementById('detailLatitude').value = s.latitude || '';
+    document.getElementById('detailLongitude').value = s.longitude || '';
+    updateMapLink();
 
     const gmailField = document.getElementById('gmailPhotosField');
     const gmailRow = document.getElementById('gmailPhotosRow');
@@ -888,6 +2544,24 @@
   document.getElementById('cancelDetail').onclick = ()=>detailOverlay.classList.remove('open');
   detailOverlay.addEventListener('click', e=>{ if(e.target===detailOverlay) detailOverlay.classList.remove('open'); });
 
+  function updateMapLink(){
+    const lat = document.getElementById('detailLatitude').value.trim();
+    const lng = document.getElementById('detailLongitude').value.trim();
+    const link = document.getElementById('detailMapLink');
+    const intelLink = document.getElementById('detailIntelLink');
+    if(lat && lng){
+      link.href = `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`;
+      link.style.display = 'inline-block';
+      intelLink.href = `https://intel.ingress.com/intel?pll=${encodeURIComponent(lat)},${encodeURIComponent(lng)}&z=15`;
+      intelLink.style.display = 'inline-block';
+    }else{
+      link.style.display = 'none';
+      intelLink.style.display = 'none';
+    }
+  }
+  document.getElementById('detailLatitude').addEventListener('input', updateMapLink);
+  document.getElementById('detailLongitude').addEventListener('input', updateMapLink);
+
   photoDrop.onclick = ()=>photoInput.click();
   photoInput.addEventListener('change', ()=>{
     const file = photoInput.files[0];
@@ -910,6 +2584,8 @@
     if(!s) return;
     s.submissionText = document.getElementById('detailDescription').value.trim();
     s.supportingText = document.getElementById('detailSupportingText').value.trim();
+    s.latitude = document.getElementById('detailLatitude').value.trim();
+    s.longitude = document.getElementById('detailLongitude').value.trim();
     try{
       if(pendingPhoto){
         await window.storage.set('photo:' + s.id, pendingPhoto, false);
@@ -1046,6 +2722,7 @@
       else if(col==='updated') active = !!(dateFilters.updated.from || dateFilters.updated.to);
       btn.classList.toggle('active', active);
     });
+    document.getElementById('btnCountryFilter').classList.toggle('active', filterCountries.size > 0);
   }
 
   function distinctColumnValues(column){
@@ -1159,6 +2836,67 @@
     });
   });
 
+  async function openCountryFilterPopover(anchorBtn){
+    filterPopover.dataset.column = 'country';
+    filterPopover.innerHTML = `<div class="filter-popover-title">Resolving countries…</div>`;
+    const rect = anchorBtn.getBoundingClientRect();
+    filterPopover.style.top = (rect.bottom + 6) + 'px';
+    let left = rect.left;
+    const estimatedWidth = 220;
+    if(left + estimatedWidth > window.innerWidth - 12) left = window.innerWidth - estimatedWidth - 12;
+    filterPopover.style.left = left + 'px';
+    filterPopover.classList.add('open');
+
+    const stillRelevant = () => filterPopover.classList.contains('open') && filterPopover.dataset.column === 'country';
+
+    await resolveCountriesForAllEntries((i, total)=>{
+      if(!stillRelevant()) return false;
+      filterPopover.innerHTML = `<div class="filter-popover-title">Resolving countries… (${i+1}/${total})</div>`;
+      return true;
+    });
+    if(!stillRelevant()) return;
+
+    const values = [...new Set(submissions.filter(s=>s.country).map(s=>s.country))].sort();
+    if(values.length === 0){
+      filterPopover.innerHTML = `<div class="filter-popover-title">Filter by Country</div><p class="dash-empty" style="padding:4px 0 0;">No entries have coordinates yet.</p>`;
+      return;
+    }
+
+    filterPopover.innerHTML = `
+      <div class="filter-popover-title">Filter by Country</div>
+      ${values.map(v => `
+        <label class="filter-check">
+          <input type="checkbox" value="${escapeHtml(v)}" ${filterCountries.size===0 || filterCountries.has(v) ? 'checked' : ''}>
+          ${escapeHtml(v)}
+        </label>
+      `).join('')}
+      <div class="filter-actions">
+        <button class="btn ghost" id="filterClearBtn">Clear</button>
+        <button class="btn primary" id="filterApplyBtn">Apply</button>
+      </div>
+    `;
+    document.getElementById('filterApplyBtn').onclick = ()=>{
+      const checked = [...filterPopover.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.value);
+      filterCountries = checked.length === values.length ? new Set() : new Set(checked);
+      closeFilterPopover();
+      updateFilterButtonStates();
+      render();
+    };
+    document.getElementById('filterClearBtn').onclick = ()=>{
+      filterCountries = new Set();
+      closeFilterPopover();
+      updateFilterButtonStates();
+      render();
+    };
+  }
+
+  document.getElementById('btnCountryFilter').addEventListener('click', e=>{
+    e.stopPropagation();
+    const alreadyOpenForThis = filterPopover.classList.contains('open') && filterPopover.dataset.column === 'country';
+    if(alreadyOpenForThis){ closeFilterPopover(); return; }
+    openCountryFilterPopover(e.currentTarget);
+  });
+
   document.addEventListener('click', e=>{
     if(filterPopover.classList.contains('open') && !filterPopover.contains(e.target) && !e.target.classList.contains('th-filter-btn')){
       closeFilterPopover();
@@ -1168,12 +2906,12 @@
   window.addEventListener('resize', closeFilterPopover);
 
   // ---- CSV export ----
-  document.getElementById('btnExport').onclick = ()=>{
+  function exportToCSV(list, filename){
     try{
-      if(submissions.length===0){ toast('Nothing to export yet'); return; }
-      const header = ['Portal','Type','Edit Field','Submitted','Status','Last Updated','Notes','Submission Text','Supporting Text','Submission Photo URL','Supporting Photo URL'];
-      const rows = submissions.map(s=>[
-        s.portal, s.type||'Nomination', s.editField||'', s.submitted, s.status, s.updated, s.notes||'',
+      if(list.length===0){ toast('Nothing to export'); return; }
+      const header = ['Portal','Type','Edit Field','Submitted','Status','Last Updated','Latitude','Longitude','Country','Notes','Submission Text','Supporting Text','Submission Photo URL','Supporting Photo URL'];
+      const rows = list.map(s=>[
+        s.portal, s.type||'Nomination', s.editField||'', s.submitted, s.status, s.updated, s.latitude||'', s.longitude||'', s.country||'', s.notes||'',
         s.submissionText||'', s.supportingText||'', s.photoUrl||'', s.supportingPhotoUrl||''
       ]);
       const escapeCell = cell=>{
@@ -1186,7 +2924,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'portal-submissions.csv';
+      a.download = filename;
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
@@ -1197,7 +2935,117 @@
       console.error('CSV export failed', err);
       toast('Export failed — see console for details');
     }
+  }
+
+  document.getElementById('btnExport').onclick = ()=>exportToCSV(submissions, 'portal-submissions.csv');
+
+  // ---- Backup / Restore (full fidelity, including manually attached photos) ----
+  document.getElementById('btnBackup').onclick = async ()=>{
+    if(submissions.length === 0){ toast('Nothing to back up yet'); return; }
+    try{
+      const photos = {};
+      for(const s of submissions){
+        if(s.hasPhoto){
+          try{
+            const res = await window.storage.get('photo:' + s.id, false);
+            if(res) photos[s.id] = res.value;
+          }catch(e){ /* photo missing/unreadable -- skip it, don't fail the whole backup */ }
+        }
+      }
+      const backup = {
+        backupVersion: 1,
+        exportedAt: new Date().toISOString(),
+        includeLegacy: document.getElementById('includeLegacy').checked,
+        showRadiusCircles: document.getElementById('showRadiusCircles').checked,
+        lastGmailSync,
+        submissions,
+        photos
+      };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `portal-tracker-backup-${todayISO()}.json`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url), 1000);
+      const photoCount = Object.keys(photos).length;
+      toast(`Backed up ${submissions.length} entries${photoCount ? ` + ${photoCount} photo(s)` : ''}`);
+    }catch(err){
+      console.error('Backup failed', err);
+      toast('Backup failed — see console for details');
+    }
   };
+
+  const restoreInput = document.getElementById('restoreInput');
+  document.getElementById('btnRestore').onclick = ()=>restoreInput.click();
+  restoreInput.addEventListener('change', async ()=>{
+    const file = restoreInput.files[0];
+    restoreInput.value = '';
+    if(!file) return;
+    try{
+      const text = await file.text();
+      const backup = JSON.parse(text);
+      if(!backup || !Array.isArray(backup.submissions)){
+        toast('That file doesn\'t look like a tracker backup (expected a "submissions" array)');
+        return;
+      }
+      const photoCount = backup.photos ? Object.keys(backup.photos).length : 0;
+      const confirmed = confirm(
+        `Restore from this backup (${backup.submissions.length} entries${photoCount ? `, ${photoCount} photo(s)` : ''}` +
+        `${backup.exportedAt ? `, made ${new Date(backup.exportedAt).toLocaleString()}` : ''})?\n\n` +
+        `This REPLACES everything currently in the tracker. This cannot be undone.`
+      );
+      if(!confirmed) return;
+
+      submissions = backup.submissions;
+      if(typeof backup.includeLegacy === 'boolean'){
+        document.getElementById('includeLegacy').checked = backup.includeLegacy;
+      }
+      if(typeof backup.showRadiusCircles === 'boolean'){
+        document.getElementById('showRadiusCircles').checked = backup.showRadiusCircles;
+      }
+      if(backup.lastGmailSync){
+        lastGmailSync = backup.lastGmailSync;
+      }
+
+      if(backup.photos){
+        for(const [id, dataUrl] of Object.entries(backup.photos)){
+          try{ await window.storage.set('photo:' + id, dataUrl, false); }catch(e){ /* skip on failure */ }
+        }
+      }
+
+      await persist();
+      render();
+      updateLastSyncIndicator();
+      toast(`Restored ${submissions.length} entries${photoCount ? ` + ${photoCount} photo(s)` : ''}`);
+    }catch(e){
+      console.error('Restore failed', e);
+      toast('Could not read that file — is it a valid backup JSON?');
+    }
+  });
+
+  // ---- Keyboard shortcuts ----
+  const OVERLAY_IDS = ['editOverlay','parseOverlay','detailOverlay','mapOverlay','dashboardOverlay','galleryOverlay','pickerOverlay'];
+  function anyOverlayOpen(){
+    return OVERLAY_IDS.some(id => document.getElementById(id).classList.contains('open'));
+  }
+  document.addEventListener('keydown', e=>{
+    if(e.ctrlKey || e.metaKey || e.altKey) return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+    if(isTyping || anyOverlayOpen()) return;
+
+    if(e.key === '/'){
+      e.preventDefault();
+      document.getElementById('search').focus();
+    }else if(e.key === 'n' || e.key === 'N'){
+      e.preventDefault();
+      openEdit(null);
+    }
+  });
 
   load();
 })();
